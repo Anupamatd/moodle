@@ -2708,5 +2708,31 @@ function xmldb_main_upgrade($oldversion) {
         upgrade_main_savepoint(true, 2020091800.01);
     }
 
+    if ($oldversion < 2020100600.01) {
+        // Script to fix incorrect records of "hidden" field in existing grade items.
+        $sql = "SELECT cm.instance, cm.course
+                  FROM {course_modules} cm
+                  JOIN {modules} m ON m.id = cm.module
+                 WHERE m.name = :module AND cm.visible = :visible";
+        $hidequizlist = $DB->get_records_sql($sql, ['module' => 'quiz', 'visible' => 0]);
+
+        foreach ($hidequizlist as $hidequiz) {
+            $updatesql = "UPDATE {grade_items}
+                             SET hidden = 1
+                           WHERE itemmodule = :module
+			                 AND courseid = :courseid
+			                 AND iteminstance = :iteminstance";
+            $params = [
+                'module'        => 'quiz',
+                'courseid'      => $hidequiz->course,
+                'iteminstance'  => $hidequiz->instance,
+            ];
+
+            $DB->execute($updatesql, $params);
+        }
+
+        upgrade_main_savepoint(true, 2020100600.01);
+    }
+
     return true;
 }
