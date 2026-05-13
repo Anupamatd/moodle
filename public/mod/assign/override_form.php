@@ -167,7 +167,7 @@ class assign_override_form extends moodleform {
                     $groupids = array_keys($groups);
                 }
                 $users = get_enrolled_users($this->context, '',
-                        $groupids, $userfields, $sort);
+                        $groupids, $userfields, $sort, 0, 0, true);
 
                 // Filter users based on any fixed restrictions (groups, profile).
                 $info = new \core_availability\info_module($cm);
