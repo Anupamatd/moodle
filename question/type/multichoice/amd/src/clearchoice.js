@@ -35,7 +35,8 @@ define(['jquery', 'core/custom_interaction_events'], function($, CustomEvents) {
      * @param {Object} clearChoiceContainer The clear choice option container.
      */
     var checkClearChoiceRadio = function(clearChoiceContainer) {
-        clearChoiceContainer.find(SELECTORS.RADIO).prop('disabled', false).prop('checked', true);
+        clearChoiceContainer.find(SELECTORS.RADIO).prop('disabled', false).prop('checked', true)
+            .attr('tabindex', -1);
     };
 
     /**
@@ -71,7 +72,7 @@ define(['jquery', 'core/custom_interaction_events'], function($, CustomEvents) {
         clearChoiceContainer.removeClass('sr-only');
         clearChoiceContainer.removeAttr('aria-hidden');
         clearChoiceContainer.find(SELECTORS.LINK).attr('tabindex', 0);
-        clearChoiceContainer.find(SELECTORS.RADIO).prop('disabled', true);
+        clearChoiceContainer.find(SELECTORS.RADIO).prop('disabled', true).attr('tabindex', -1);
     };
 
     /**
@@ -82,27 +83,41 @@ define(['jquery', 'core/custom_interaction_events'], function($, CustomEvents) {
      */
     var registerEventListeners = function(root, fieldPrefix) {
         var clearChoiceContainer = getClearChoiceElement(root, fieldPrefix);
+        var clearChoiceRequested = false;
+
+        // Keep hidden clear-choice radio non-interactive during initial load.
+        clearChoiceContainer.find(SELECTORS.RADIO)
+            .prop('checked', false)
+            .prop('disabled', true)
+            .attr('tabindex', -1);
 
         clearChoiceContainer.on(CustomEvents.events.activate, SELECTORS.LINK, function(e, data) {
-
-                // Mark the clear choice radio element as checked.
-                checkClearChoiceRadio(clearChoiceContainer);
-                // Now that the hidden radio has been checked, hide the clear choice option.
+                // Mark the clear action in local state.
+                clearChoiceRequested = true;
+                // Keep visible answer radios explicitly unchecked.
+                root.find(SELECTORS.CHOICE_ELEMENT).filter(SELECTORS.RADIO).prop('checked', false);
+                // Keep hidden clear-choice radio non-interactive during keyboard flow.
+                clearChoiceContainer.find(SELECTORS.RADIO)
+                    .prop('checked', false)
+                    .prop('disabled', true)
+                    .attr('tabindex', -1);
+                // Hide clear choice option after clearing.
                 hideClearChoiceOption(clearChoiceContainer);
 
                 data.originalEvent.preventDefault();
         });
 
         root.on('change', SELECTORS.CHOICE_ELEMENT, function() {
+            clearChoiceRequested = false;
             // If the event has been triggered by any other choice, show the clear choice option.
             showClearChoiceOption(clearChoiceContainer);
         });
 
-        // If the clear choice radio receives focus from using the tab key, return the focus
-        // to the first answer option.
-        clearChoiceContainer.find(SELECTORS.RADIO).focus(function() {
-            var firstChoice = root.find(SELECTORS.CHOICE_ELEMENT).first();
-            firstChoice.focus();
+        // Submit value -1 only when the user explicitly cleared their choice.
+        root.closest('form').on('submit', function() {
+            if (clearChoiceRequested) {
+                checkClearChoiceRadio(clearChoiceContainer);
+            }
         });
     };
 
