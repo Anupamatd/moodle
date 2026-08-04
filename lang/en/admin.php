@@ -549,6 +549,7 @@ $string['doesnotfitdetail'] = 'Display settings for email leaving Moodle.';
 $string['download'] = 'Download';
 $string['downloadcoursecontentallowed'] = 'Download course content feature available';
 $string['downloadcoursecontentallowed_desc'] = 'Whether the download course content feature is available to courses. When available, course content downloads can be enabled/disabled using the "Enable download course content" setting within the course edit menu (the default for this can be set in <a href={$a} target="_blank">Course default settings</a>).';
+$string['duplicatecourseshortnames'] = 'There are {$a} course shortname(s) that have duplicates. Duplicate shortnames should be reviewed and manually renamed before upgrading, as a unique index will be added to the course shortname column. You can list duplicates using the CLI tool: php admin/cli/fix_course_shortnames.php. Use --fix to automatically resolve them by appending a numeric suffix (_1, _2, etc.), keeping the most recently accessed course unchanged. Alternatively, you can proceed with the upgrade and the upgrade script will resolve duplicates in the same way.';
 $string['durationunits'] = 'duration units';
 $string['edithelpdocs'] = 'Edit help documents';
 $string['editlang'] = '<b>Edit</b>';
