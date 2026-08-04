@@ -2381,5 +2381,44 @@ function xmldb_main_upgrade($oldversion) {
     // Automatically generated Moodle v5.3.0 release upgrade line.
     // Put any upgrade step following this.
 
+    if ($oldversion < 2026100500.03) {
+        // Fix duplicate course shortnames before adding a unique index.
+        // Append a numeric suffix (_1, _2, _3...) to each duplicate, keeping the most recently
+        // accessed course unchanged.
+        require_once($CFG->dirroot . '/lib/db/upgradelib.php');
+        $renames = upgrade_fix_duplicate_course_shortnames();
+        foreach ($renames as $rename) {
+            upgrade_log(
+                UPGRADE_LOG_NORMAL,
+                null,
+                'Renamed duplicate course shortname',
+                "Course id {$rename->id}: '{$rename->shortname}' to '{$rename->newshortname}'"
+            );
+        }
+
+        upgrade_main_savepoint(true, 2026100500.03);
+    }
+
+    if ($oldversion < 2026100500.04) {
+        // Define index shortname (not unique) to be dropped from course.
+        $table = new xmldb_table('course');
+        $index = new xmldb_index('shortname', XMLDB_INDEX_NOTUNIQUE, ['shortname']);
+
+        // Conditionally launch drop index shortname.
+        if ($dbman->index_exists($table, $index)) {
+            $dbman->drop_index($table, $index);
+        }
+
+        // Define index shortname (unique) to be added to course.
+        $index = new xmldb_index('shortname', XMLDB_INDEX_UNIQUE, ['shortname']);
+
+        // Conditionally launch add index shortname.
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_main_savepoint(true, 2026100500.04);
+    }
+
     return true;
 }

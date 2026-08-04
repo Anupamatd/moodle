@@ -1762,6 +1762,56 @@ function course_overviewfiles_options($course) {
 }
 
 /**
+ * Ensure the given course shortname is not already in use.
+ *
+ * @param string $shortname The course shortname to check.
+ * @param int $excludeid Optional course ID to exclude from the check.
+ * @throws moodle_exception If the shortname is already taken.
+ */
+function course_ensure_shortname_available(string $shortname, int $excludeid = 0): void {
+    global $DB;
+
+    $DB->mark_tables_for_primary('course');
+
+    if ($excludeid) {
+        $exists = $DB->record_exists_select(
+            'course',
+            'shortname = ? AND id <> ?',
+            [$shortname, $excludeid],
+        );
+    } else {
+        $exists = $DB->record_exists('course', ['shortname' => $shortname]);
+    }
+
+    if ($exists) {
+        throw new moodle_exception('shortnametaken', '', '', $shortname);
+    }
+}
+
+/**
+ * Acquire a lock for the given course shortname.
+ *
+ * This prevents race conditions when multiple processes attempt to create
+ * a course with the same shortname concurrently. The caller is responsible
+ * for releasing the returned lock when it is no longer needed.
+ *
+ * @param string $shortname The course shortname to lock.
+ * @return \core\lock\lock The acquired lock instance (caller must release it).
+ * @throws moodle_exception If the lock cannot be acquired (another process already holds it).
+ */
+function course_acquire_shortname_lock(string $shortname): \core\lock\lock {
+    $lockfactory = \core\lock\lock_config::get_lock_factory('core_course');
+    $lockkey = 'reserve_course_shortname_' . $shortname;
+    $lock = $lockfactory->get_lock($lockkey, 0);
+
+    if (!$lock) {
+        throw new moodle_exception('shortnametaken', '', '', $shortname);
+    }
+
+    return $lock;
+}
+
+/**
  * Create a course and either return a $course object
  *
  * Please note this functions does not verify any access control,
@@ -1777,62 +1827,73 @@ function create_course($data, $editoroptions = NULL) {
     //check the categoryid - must be given for all new courses
     $category = $DB->get_record('course_categories', array('id'=>$data->category), '*', MUST_EXIST);
 
-    // Check if the shortname already exists.
+    // Acquire a lock for the shortname to prevent race conditions during concurrent course creation.
+    $shortnamelock = null;
     if (!empty($data->shortname)) {
-        if ($DB->record_exists('course', array('shortname' => $data->shortname))) {
-            throw new moodle_exception('shortnametaken', '', '', $data->shortname);
+        $shortnamelock = course_acquire_shortname_lock($data->shortname);
+    }
+
+    try {
+        // Check if the shortname already exists.
+        if (!empty($data->shortname)) {
+            course_ensure_shortname_available($data->shortname);
+        }
+
+        // Check if the idnumber already exists.
+        if (!empty($data->idnumber)) {
+            if ($DB->record_exists('course', ['idnumber' => $data->idnumber])) {
+                throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
+            }
+        }
+
+        if (empty($CFG->enablecourserelativedates)) {
+            // Make sure we're not setting the relative dates mode when the setting is disabled.
+            unset($data->relativedatesmode);
+        }
+
+        if ($errorcode = course_validate_dates((array)$data)) {
+            throw new moodle_exception($errorcode);
+        }
+
+        // Check if timecreated is given.
+        $data->timecreated  = !empty($data->timecreated) ? $data->timecreated : time();
+        $data->timemodified = $data->timecreated;
+
+        // Place at beginning of any category.
+        $data->sortorder = 0;
+
+        if ($editoroptions) {
+            // Summary text is updated later, we need context to store the files first.
+            $data->summary = '';
+            $data->summary_format = $data->summary_editor['format'];
+        }
+
+        // Get default completion settings as a fallback in case the enablecompletion field is not set.
+        $courseconfig = get_config('moodlecourse');
+        $defaultcompletion = !empty($CFG->enablecompletion) ? $courseconfig->enablecompletion : COMPLETION_DISABLED;
+        $enablecompletion = $data->enablecompletion ?? $defaultcompletion;
+        // Unset showcompletionconditions when completion tracking is not enabled for the course.
+        if ($enablecompletion == COMPLETION_DISABLED) {
+            unset($data->showcompletionconditions);
+        } else if (!isset($data->showcompletionconditions)) {
+            // Show completion conditions should have a default value when completion is enabled. Set it to the site defaults.
+            // This scenario can happen when a course is created through data generators or through a web service.
+            $data->showcompletionconditions = $courseconfig->showcompletionconditions;
+        }
+
+        if (!isset($data->visible)) {
+            // Data not from form, add missing visibility info.
+            $data->visible = $category->visible;
+        }
+        $data->visibleold = $data->visible;
+
+        $newcourseid = $DB->insert_record('course', $data);
+    } finally {
+        if ($shortnamelock) {
+            $shortnamelock->release();
         }
     }
 
-    // Check if the idnumber already exists.
-    if (!empty($data->idnumber)) {
-        if ($DB->record_exists('course', array('idnumber' => $data->idnumber))) {
-            throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
-        }
-    }
-
-    if (empty($CFG->enablecourserelativedates)) {
-        // Make sure we're not setting the relative dates mode when the setting is disabled.
-        unset($data->relativedatesmode);
-    }
-
-    if ($errorcode = course_validate_dates((array)$data)) {
-        throw new moodle_exception($errorcode);
-    }
-
-    // Check if timecreated is given.
-    $data->timecreated  = !empty($data->timecreated) ? $data->timecreated : time();
-    $data->timemodified = $data->timecreated;
-
-    // place at beginning of any category
-    $data->sortorder = 0;
-
-    if ($editoroptions) {
-        // summary text is updated later, we need context to store the files first
-        $data->summary = '';
-        $data->summary_format = $data->summary_editor['format'];
-    }
-
-    // Get default completion settings as a fallback in case the enablecompletion field is not set.
-    $courseconfig = get_config('moodlecourse');
-    $defaultcompletion = !empty($CFG->enablecompletion) ? $courseconfig->enablecompletion : COMPLETION_DISABLED;
-    $enablecompletion = $data->enablecompletion ?? $defaultcompletion;
-    // Unset showcompletionconditions when completion tracking is not enabled for the course.
-    if ($enablecompletion == COMPLETION_DISABLED) {
-        unset($data->showcompletionconditions);
-    } else if (!isset($data->showcompletionconditions)) {
-        // Show completion conditions should have a default value when completion is enabled. Set it to the site defaults.
-        // This scenario can happen when a course is created through data generators or through a web service.
-        $data->showcompletionconditions = $courseconfig->showcompletionconditions;
-    }
-
-    if (!isset($data->visible)) {
-        // data not from form, add missing visibility info
-        $data->visible = $category->visible;
-    }
-    $data->visibleold = $data->visible;
-
-    $newcourseid = $DB->insert_record('course', $data);
     $context = context_course::instance($newcourseid, MUST_EXIST);
 
     if ($editoroptions) {
@@ -1965,71 +2026,82 @@ function update_course($data, $editoroptions = NULL) {
         $data = file_postupdate_standard_filemanager($data, 'overviewfiles', $overviewfilesoptions, $context, 'course', 'overviewfiles', 0);
     }
 
-    // Check we don't have a duplicate shortname.
+    // If the shortname is being changed, acquire a lock for the new shortname to prevent race conditions during concurrent updates.
+    $shortnamelock = null;
     if (!empty($data->shortname) && $oldcourse->shortname != $data->shortname) {
-        if ($DB->record_exists_sql('SELECT id from {course} WHERE shortname = ? AND id <> ?', array($data->shortname, $data->id))) {
-            throw new moodle_exception('shortnametaken', '', '', $data->shortname);
+        $shortnamelock = course_acquire_shortname_lock($data->shortname);
+    }
+
+    try {
+        // Check we don't have a duplicate shortname.
+        if (!empty($data->shortname) && $oldcourse->shortname != $data->shortname) {
+            course_ensure_shortname_available($data->shortname, $data->id);
         }
-    }
 
-    // Check we don't have a duplicate idnumber.
-    if (!empty($data->idnumber) && $oldcourse->idnumber != $data->idnumber) {
-        if ($DB->record_exists_sql('SELECT id from {course} WHERE idnumber = ? AND id <> ?', array($data->idnumber, $data->id))) {
-            throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
-        }
-    }
-
-    if ($errorcode = course_validate_dates((array)$data)) {
-        throw new moodle_exception($errorcode);
-    }
-
-    if (!isset($data->category) or empty($data->category)) {
-        // prevent nulls and 0 in category field
-        unset($data->category);
-    }
-    $changesincoursecat = $movecat = (isset($data->category) and $oldcourse->category != $data->category);
-
-    if (!isset($data->visible)) {
-        // data not from form, add missing visibility info
-        $data->visible = $oldcourse->visible;
-    }
-
-    if ($data->visible != $oldcourse->visible) {
-        // reset the visibleold flag when manually hiding/unhiding course
-        $data->visibleold = $data->visible;
-        $changesincoursecat = true;
-    } else {
-        if ($movecat) {
-            $newcategory = $DB->get_record('course_categories', array('id'=>$data->category));
-            if (empty($newcategory->visible)) {
-                // make sure when moving into hidden category the course is hidden automatically
-                $data->visible = 0;
+        // Check we don't have a duplicate idnumber.
+        if (!empty($data->idnumber) && $oldcourse->idnumber != $data->idnumber) {
+            if ($DB->record_exists_sql('SELECT id from {course} WHERE idnumber = ? AND id <> ?', [$data->idnumber, $data->id])) {
+                throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
             }
         }
-    }
 
-    // Set newsitems to 0 if format does not support announcements.
-    if (isset($data->format)) {
-        $newcourseformat = course_get_format((object)['format' => $data->format]);
-        if (!$newcourseformat->supports_news()) {
-            $data->newsitems = 0;
+        if ($errorcode = course_validate_dates((array)$data)) {
+            throw new moodle_exception($errorcode);
+        }
+
+        if (!isset($data->category) || empty($data->category)) {
+            // Prevent nulls and 0 in category field.
+            unset($data->category);
+        }
+        $changesincoursecat = $movecat = (isset($data->category) && $oldcourse->category != $data->category);
+
+        if (!isset($data->visible)) {
+            // Data not from form, add missing visibility info.
+            $data->visible = $oldcourse->visible;
+        }
+
+        if ($data->visible != $oldcourse->visible) {
+            // Reset the visibleold flag when manually hiding/unhiding course.
+            $data->visibleold = $data->visible;
+            $changesincoursecat = true;
+        } else {
+            if ($movecat) {
+                $newcategory = $DB->get_record('course_categories', ['id' => $data->category]);
+                if (empty($newcategory->visible)) {
+                    // Make sure when moving into hidden category the course is hidden automatically.
+                    $data->visible = 0;
+                }
+            }
+        }
+
+        // Set newsitems to 0 if format does not support announcements.
+        if (isset($data->format)) {
+            $newcourseformat = course_get_format((object)['format' => $data->format]);
+            if (!$newcourseformat->supports_news()) {
+                $data->newsitems = 0;
+            }
+        }
+
+        // Set showcompletionconditions to null when completion tracking has been disabled for the course.
+        if (isset($data->enablecompletion) && $data->enablecompletion == COMPLETION_DISABLED) {
+            $data->showcompletionconditions = null;
+        }
+        // Update custom fields if there are any of them in the form.
+        $handler = core_course\customfield\course_handler::create();
+        $handler->instance_form_save($data);
+
+        di::get(hook\manager::class)->dispatch(
+            new \core_course\hook\after_form_submission($data),
+        );
+
+        // Update with the new data.
+        $DB->update_record('course', $data);
+    } finally {
+        if ($shortnamelock) {
+            $shortnamelock->release();
         }
     }
 
-    // Set showcompletionconditions to null when completion tracking has been disabled for the course.
-    if (isset($data->enablecompletion) && $data->enablecompletion == COMPLETION_DISABLED) {
-        $data->showcompletionconditions = null;
-    }
-    // Update custom fields if there are any of them in the form.
-    $handler = core_course\customfield\course_handler::create();
-    $handler->instance_form_save($data);
-
-    di::get(hook\manager::class)->dispatch(
-        new \core_course\hook\after_form_submission($data),
-    );
-
-    // Update with the new data
-    $DB->update_record('course', $data);
     // make sure the modinfo cache is reset
     rebuild_course_cache($data->id);
 
