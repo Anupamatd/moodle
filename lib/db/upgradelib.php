@@ -1946,3 +1946,76 @@ function upgrade_store_relative_url_sitehomepage() {
         }
     }
 }
+
+/**
+ * Get all courses that have duplicate shortnames.
+ *
+ * Returns courses grouped by shortname, ordered by most recently accessed first
+ * within each group (by user_lastaccess, then by course ID descending).
+ *
+ * @return array Associative array keyed by shortname.
+ */
+function upgrade_get_courses_with_duplicate_shortnames(): array {
+    global $DB;
+
+    $sql = "SELECT shortname
+              FROM {course}
+          GROUP BY shortname
+            HAVING COUNT(id) > 1";
+    $shortnames = $DB->get_fieldset_sql($sql);
+
+    $result = [];
+    foreach ($shortnames as $shortname) {
+        $sql = "SELECT c.id, c.shortname, c.fullname, COALESCE(MAX(ul.timeaccess), 0) AS lastaccess
+                  FROM {course} c
+             LEFT JOIN {user_lastaccess} ul ON ul.courseid = c.id
+                 WHERE c.shortname = :shortname
+              GROUP BY c.id, c.shortname, c.fullname
+              ORDER BY lastaccess DESC, c.id DESC";
+        $result[$shortname] = array_values($DB->get_records_sql($sql, ['shortname' => $shortname]));
+    }
+
+    return $result;
+}
+
+/**
+ * Find and fix duplicate course shortnames.
+ *
+ * For each set of courses sharing the same shortname, the most recently accessed
+ * course (by user_lastaccess) is kept unchanged and the rest are renamed by
+ * appending a numeric suffix (_1, _2, etc.).
+ *
+ * @return array List of renames performed. Each element is an object with properties:
+ *               - id: int Course ID that was renamed.
+ *               - shortname: string Original shortname.
+ *               - newshortname: string New shortname after rename.
+ */
+function upgrade_fix_duplicate_course_shortnames(): array {
+    global $DB;
+
+    $renames = [];
+    $duplicates = upgrade_get_courses_with_duplicate_shortnames();
+
+    foreach ($duplicates as $shortname => $courses) {
+        // Keep the first course (most recently accessed) unchanged, rename the rest.
+        array_shift($courses);
+        $suffix = 1;
+        foreach ($courses as $course) {
+            // Append a numeric suffix, ensuring it doesn't itself clash.
+            $newshortname = $shortname . '_' . $suffix;
+            while ($DB->record_exists('course', ['shortname' => $newshortname])) {
+                $suffix++;
+                $newshortname = $shortname . '_' . $suffix;
+            }
+            $DB->set_field('course', 'shortname', $newshortname, ['id' => $course->id]);
+            $renames[] = (object) [
+                'id' => $course->id,
+                'shortname' => $shortname,
+                'newshortname' => $newshortname,
+            ];
+            $suffix++;
+        }
+    }
+
+    return $renames;
+}
