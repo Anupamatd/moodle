@@ -1585,48 +1585,71 @@ class core_course_external extends external_api {
             require_capability('moodle/restore:userinfo', $categorycontext);
         }
 
-        // Check if the shortname is used.
-        if ($foundcourses = $DB->get_records('course', array('shortname'=>$shortname))) {
-            foreach ($foundcourses as $foundcourse) {
-                $foundcoursenames[] = $foundcourse->fullname;
+        // Acquire a lock and check shortname availability, before performing the backup.
+        // The lock is released by create_new_course after inserting the record, or in the
+        // finally block if an exception occurs before reaching create_new_course.
+        $shortnamelock = course_acquire_shortname_lock($params['shortname']);
+
+        try {
+            // Check if the shortname is already used.
+            course_ensure_shortname_available($params['shortname']);
+
+            // Backup the course.
+
+            $bc = new backup_controller(
+                backup::TYPE_1COURSE,
+                $course->id,
+                backup::FORMAT_MOODLE,
+                backup::INTERACTIVE_NO,
+                backup::MODE_SAMESITE,
+                $USER->id
+            );
+
+            foreach ($backupsettings as $name => $value) {
+                if ($setting = $bc->get_plan()->get_setting($name)) {
+                    $bc->get_plan()->get_setting($name)->set_value($value);
+                }
             }
 
-            $foundcoursenamestring = implode(',', $foundcoursenames);
-            throw new moodle_exception('shortnametaken', '', '', $foundcoursenamestring);
-        }
+            $backupid       = $bc->get_backupid();
+            $backupbasepath = $bc->get_plan()->get_basepath();
 
-        // Backup the course.
+            $bc->execute_plan();
+            $results = $bc->get_results();
+            $file = $results['backup_destination'];
 
-        $bc = new backup_controller(backup::TYPE_1COURSE, $course->id, backup::FORMAT_MOODLE,
-        backup::INTERACTIVE_NO, backup::MODE_SAMESITE, $USER->id);
+            $bc->destroy();
 
-        foreach ($backupsettings as $name => $value) {
-            if ($setting = $bc->get_plan()->get_setting($name)) {
-                $bc->get_plan()->get_setting($name)->set_value($value);
+            // Restore the backup immediately.
+
+            // Check if we need to unzip the file because the backup temp dir does not contains backup files.
+            if (!file_exists($backupbasepath . "/moodle_backup.xml")) {
+                $file->extract_to_pathname(get_file_packer('application/vnd.moodle.backup'), $backupbasepath);
+            }
+
+            // Create new course, passing the lock. create_new_course will release the lock.
+            $newcourseid = restore_dbops::create_new_course(
+                $params['fullname'],
+                $params['shortname'],
+                $params['categoryid'],
+                $shortnamelock,
+            );
+            $shortnamelock = null;
+        } finally {
+            // If we didn't reach create_new_course (e.g. backup failed), release the lock.
+            if ($shortnamelock) {
+                $shortnamelock->release();
             }
         }
 
-        $backupid       = $bc->get_backupid();
-        $backupbasepath = $bc->get_plan()->get_basepath();
-
-        $bc->execute_plan();
-        $results = $bc->get_results();
-        $file = $results['backup_destination'];
-
-        $bc->destroy();
-
-        // Restore the backup immediately.
-
-        // Check if we need to unzip the file because the backup temp dir does not contains backup files.
-        if (!file_exists($backupbasepath . "/moodle_backup.xml")) {
-            $file->extract_to_pathname(get_file_packer('application/vnd.moodle.backup'), $backupbasepath);
-        }
-
-        // Create new course.
-        $newcourseid = restore_dbops::create_new_course($params['fullname'], $params['shortname'], $params['categoryid']);
-
-        $rc = new restore_controller($backupid, $newcourseid,
-                backup::INTERACTIVE_NO, backup::MODE_SAMESITE, $USER->id, backup::TARGET_NEW_COURSE);
+        $rc = new restore_controller(
+            $backupid,
+            $newcourseid,
+            backup::INTERACTIVE_NO,
+            backup::MODE_SAMESITE,
+            $USER->id,
+            backup::TARGET_NEW_COURSE
+        );
 
         foreach ($backupsettings as $name => $value) {
             $setting = $rc->get_plan()->get_setting($name);
@@ -1634,6 +1657,16 @@ class core_course_external extends external_api {
                 $setting->set_value($value);
             }
         }
+
+        // Set the course names so the restore uses the desired shortname/fullname
+        // from the start, avoiding a temporary shortname swap during process_course().
+        $shortnamesetting = $rc->get_plan()->get_setting('course_shortname');
+        $shortnamesetting->set_status(backup_setting::NOT_LOCKED);
+        $shortnamesetting->set_value($params['shortname']);
+
+        $fullnamesetting = $rc->get_plan()->get_setting('course_fullname');
+        $fullnamesetting->set_status(backup_setting::NOT_LOCKED);
+        $fullnamesetting->set_value($params['fullname']);
 
         if (!$rc->execute_precheck()) {
             $precheckresults = $rc->get_precheck_results();
@@ -1661,12 +1694,10 @@ class core_course_external extends external_api {
         $rc->execute_plan();
         $rc->destroy();
 
-        $course = $DB->get_record('course', array('id' => $newcourseid), '*', MUST_EXIST);
-        $course->fullname = $params['fullname'];
-        $course->shortname = $params['shortname'];
+        $course = $DB->get_record('course', ['id' => $newcourseid], '*', MUST_EXIST);
         $course->visible = $params['visible'];
 
-        // Set shortname and fullname back.
+        // Set visibility.
         $DB->update_record('course', $course);
 
         if (empty($CFG->keeptempdirectoriesonbackup)) {
