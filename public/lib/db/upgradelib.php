@@ -2416,6 +2416,10 @@ function upgrade_get_courses_with_duplicate_shortnames(): array {
  * course (by user_lastaccess) is kept unchanged and the rest are renamed by
  * appending a numeric suffix (_1, _2, etc.).
  *
+ * Course shortnames have a 255 character limit. The base shortname is dynamically
+ * truncated to accommodate the suffix length. As the suffix grows from single digits
+ * to double/triple digits, the available space for the base shortname is recalculated.
+ *
  * @return array List of renames performed. Each element is an object with properties:
  *               - id: int Course ID that was renamed.
  *               - shortname: string Original shortname.
@@ -2424,6 +2428,7 @@ function upgrade_get_courses_with_duplicate_shortnames(): array {
 function upgrade_fix_duplicate_course_shortnames(): array {
     global $DB;
 
+    $maxshortnamelength = 255;
     $renames = [];
     $duplicates = upgrade_get_courses_with_duplicate_shortnames();
 
@@ -2433,10 +2438,21 @@ function upgrade_fix_duplicate_course_shortnames(): array {
         $suffix = 1;
         foreach ($courses as $course) {
             // Append a numeric suffix, ensuring it doesn't itself clash.
-            $newshortname = $shortname . '_' . $suffix;
+            // As the suffix grows in digit length, we may need to shorten the base.
+            $suffixlength = strlen((string)$suffix);
+            $suffixwithanderscore = $suffixlength + 1; // Add 1 for the underscore.
+            $currentavailablelength = $maxshortnamelength - $suffixwithanderscore;
+            $currentshortnamebase = substr($shortname, 0, $currentavailablelength);
+
+            $newshortname = $currentshortnamebase . '_' . $suffix;
             while ($DB->record_exists('course', ['shortname' => $newshortname])) {
                 $suffix++;
-                $newshortname = $shortname . '_' . $suffix;
+                // Recalculate available space as suffix digit count increases.
+                $suffixlength = strlen((string)$suffix);
+                $suffixwithanderscore = $suffixlength + 1; // Add 1 for the underscore.
+                $currentavailablelength = $maxshortnamelength - $suffixwithanderscore;
+                $currentshortnamebase = substr($shortname, 0, $currentavailablelength);
+                $newshortname = $currentshortnamebase . '_' . $suffix;
             }
             $DB->set_field('course', 'shortname', $newshortname, ['id' => $course->id]);
             $renames[] = (object) [
