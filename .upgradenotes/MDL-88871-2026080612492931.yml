@@ -1,0 +1,14 @@
+issueNumber: MDL-88871
+notes:
+  core_course:
+    - message: >-
+        Added tooling to help identify and resolve duplicate course shortnames
+        prior to upgrading. Moodle now includes an environment check warning when
+        duplicate course shortnames are present, and a CLI helper
+        (`php admin/cli/fix_course_shortnames.php`) to list duplicates or
+        automatically rename them with numeric suffixes (`--fix`).
+
+
+        This stable-branch change is a partial backport focused on detection and
+        remediation support.
+      type: changed
