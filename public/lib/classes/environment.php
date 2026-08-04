@@ -160,4 +160,39 @@ class environment {
 
         return !empty($CFG->debugdeveloper);
     }
+
+    /**
+     * Check for duplicate course shortnames in the database.
+     *
+     * This check warns admins so they can review and rename duplicates before upgrading,
+     * using the CLI tool admin/cli/fix_course_shortnames.php.
+     *
+     * @param \environment_results $result
+     * @return \environment_results|null
+     */
+    public static function check_duplicate_course_shortnames(\environment_results $result): ?\environment_results {
+        global $DB;
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('course')) {
+            return null;
+        }
+
+        $sql = "SELECT COUNT(DISTINCT shortname)
+                  FROM (
+                        SELECT shortname
+                          FROM {course}
+                      GROUP BY shortname
+                        HAVING COUNT(id) > 1
+                       ) duplicates";
+        $count = $DB->count_records_sql($sql);
+
+        if ($count > 0) {
+            $result->setInfo("Found {$count} duplicate course shortname(s)");
+            $result->setFeedbackStr(['duplicatecourseshortnames', 'admin', $count]);
+            return $result;
+        }
+
+        return null;
+    }
 }
