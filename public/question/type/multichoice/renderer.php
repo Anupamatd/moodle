@@ -310,37 +310,40 @@ class qtype_multichoice_single_renderer extends qtype_multichoice_renderer_base 
 
         $clearchoiceid = $this->get_input_id($qa, -1);
         $clearchoicefieldname = $qa->get_qt_field_name('clearchoice');
-        $clearchoiceradioattrs = [
-            'type' => $this->get_input_type(),
+        // The cleared choice (-1) is submitted by a hidden input, not by a hidden radio in the answer
+        // group. A checked radio is the only tab stop in its group, so an invisible checked radio made
+        // every visible choice unreachable by keyboard. A hidden input can never take the focus, and
+        // its value is submitted however the form reaches the server, which includes the ways that do
+        // not fire a submit event, such as the quiz auto-save and the auto-submit when time runs out.
+        $clearchoiceinputattrs = [
+            'type' => 'hidden',
             'name' => $qa->get_qt_field_name('answer'),
             'id' => $clearchoiceid,
             'value' => -1,
-            'class' => 'visually-hidden',
-            'aria-hidden' => 'true'
         ];
         $clearchoicewrapperattrs = [
             'id' => $clearchoicefieldname,
             'class' => 'qtype_multichoice_clearchoice',
         ];
 
-        // When no choice selected during rendering, then hide the clear choice option.
-        // We are using .visually-hidden and aria-hidden together so while the element is hidden
-        // from both the monitor and the screen-reader, it is still tabbable.
         $linktabindex = 0;
         if (!$hascheckedchoice && $response == -1) {
+            // Nothing is selected, so the choice is already cleared. Hide the clear choice option, using
+            // .visually-hidden and aria-hidden together so that the element is hidden from both the
+            // monitor and the screen-reader, and let the hidden input submit the cleared choice.
             $clearchoicewrapperattrs['class'] .= ' visually-hidden';
             $clearchoicewrapperattrs['aria-hidden'] = 'true';
-            $clearchoiceradioattrs['checked'] = 'checked';
             $linktabindex = -1;
+        } else {
+            // A choice is selected, so the answer must come from the radios. Disabled inputs are not submitted.
+            $clearchoiceinputattrs['disabled'] = 'disabled';
         }
-        // Adds an hidden radio that will be checked to give the impression the choice has been cleared.
-        $clearchoiceradio = html_writer::empty_tag('input', $clearchoiceradioattrs);
+        $clearchoiceinput = html_writer::empty_tag('input', $clearchoiceinputattrs);
         $clearchoice = html_writer::link('#', get_string('clearchoice', 'qtype_multichoice'),
             ['tabindex' => $linktabindex, 'role' => 'button', 'class' => 'btn btn-link ms-3 mt-n1']);
-        $clearchoiceradio .= html_writer::label($clearchoice, $clearchoiceid);
 
-        // Now wrap the radio and label inside a div.
-        $result = html_writer::tag('div', $clearchoiceradio, $clearchoicewrapperattrs);
+        // Now wrap the hidden input and the link inside a div.
+        $result = html_writer::tag('div', $clearchoiceinput . $clearchoice, $clearchoicewrapperattrs);
 
         // Load required clearchoice AMD module.
         $this->page->requires->js_call_amd('qtype_multichoice/clearchoice', 'init',
