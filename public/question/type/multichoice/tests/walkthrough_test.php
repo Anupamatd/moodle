@@ -186,16 +186,27 @@ final class walkthrough_test extends \qbehaviour_walkthrough_test_base {
 
         $this->start_attempt_at_question($mc, 'deferredfeedback', 3);
 
+        // Nothing is selected yet, so the cleared choice is what gets submitted. There must not be a
+        // radio for it, because a checked radio would be the only tab stop in the answer group.
+        $this->check_current_output(
+            $this->get_contains_mc_radio_expectation($rightchoice, true, false), // Not checked.
+            $this->get_contains_mc_radio_expectation($rightchoice + 1, true, false), // Not checked.
+            $this->get_contains_mc_radio_expectation($rightchoice + 2, true, false), // Not checked.
+            $this->get_contains_clear_choice_expectation(true) // Cleared choice will be submitted.
+        );
+        $this->assertStringNotContainsString('type="radio" name="' .
+            $this->quba->get_field_prefix($this->slot) . 'answer" value="-1"', $this->currentoutput);
+
         // Let's first submit the wrong choice (2).
         $this->process_submission(array('answer' => $wrongchoice));  // Wrong choice (2).
 
         $this->check_current_mark(null);
-        // Clear choice radio should not be checked.
+        // The cleared choice must not be submitted while a choice is selected.
         $this->check_current_output(
             $this->get_contains_mc_radio_expectation($rightchoice, true, false), // Not checked.
             $this->get_contains_mc_radio_expectation($rightchoice + 1, true, false), // Not checked.
             $this->get_contains_mc_radio_expectation($rightchoice + 2, true, true), // Wrong choice (2) checked.
-            $this->get_contains_mc_radio_expectation($clearchoice, true, false), // Not checked.
+            $this->get_contains_clear_choice_expectation(false), // Disabled, so not submitted.
             $this->get_does_not_contain_correctness_expectation(),
             $this->get_does_not_contain_feedback_expectation()
         );
@@ -204,12 +215,12 @@ final class walkthrough_test extends \qbehaviour_walkthrough_test_base {
         $this->process_submission(array('answer' => $clearchoice)); // Clear choice (-1).
         $this->check_current_mark(null);
 
-        // This time, the clear choice radio should be the only one checked.
+        // This time, no choice should be checked, and the cleared choice is what gets submitted.
         $this->check_current_output(
             $this->get_contains_mc_radio_expectation($rightchoice, true, false), // Not checked.
             $this->get_contains_mc_radio_expectation($rightchoice + 1, true, false), // Not checked.
             $this->get_contains_mc_radio_expectation($rightchoice + 2, true, false), // Not checked.
-            $this->get_contains_mc_radio_expectation($clearchoice, true, true), // Clear choice radio checked.
+            $this->get_contains_clear_choice_expectation(true), // Cleared choice will be submitted.
             $this->get_does_not_contain_correctness_expectation(),
             $this->get_does_not_contain_feedback_expectation()
         );
@@ -222,7 +233,7 @@ final class walkthrough_test extends \qbehaviour_walkthrough_test_base {
             $this->get_contains_mc_radio_expectation($rightchoice, true, true),
             $this->get_contains_mc_radio_expectation($rightchoice + 1, true, false),
             $this->get_contains_mc_radio_expectation($rightchoice + 2, true, false),
-            $this->get_contains_mc_radio_expectation($clearchoice, true, false),
+            $this->get_contains_clear_choice_expectation(false), // Disabled, so not submitted.
             $this->get_does_not_contain_correctness_expectation(),
             $this->get_does_not_contain_feedback_expectation()
         );
@@ -335,4 +346,25 @@ final class walkthrough_test extends \qbehaviour_walkthrough_test_base {
         $this->assertStringContainsString($standardinstruction, $this->currentoutput);
     }
 
+    /**
+     * Get an expectation for the hidden input which submits the cleared choice.
+     *
+     * When it is enabled, any form submission - including the ones that do not fire a submit event,
+     * like the quiz auto-save - will submit the cleared choice (-1).
+     *
+     * @param bool $enabled whether the input is expected to be enabled.
+     * @return \question_contains_tag_with_attributes the expectation.
+     */
+    protected function get_contains_clear_choice_expectation(bool $enabled): \question_contains_tag_with_attributes {
+        $attributes = [
+            'type' => 'hidden',
+            'name' => $this->quba->get_field_prefix($this->slot) . 'answer',
+            'value' => '-1',
+        ];
+        if ($enabled) {
+            return new \question_contains_tag_with_attributes('input', $attributes, ['disabled' => 'disabled']);
+        }
+        $attributes['disabled'] = 'disabled';
+        return new \question_contains_tag_with_attributes('input', $attributes);
+    }
 }

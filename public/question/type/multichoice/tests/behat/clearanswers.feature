@@ -61,3 +61,24 @@ Feature: Clear my answers
     And I follow "Finish attempt ..."
     And I click on "Return to attempt" "button"
     Then I should not see "Clear my choice"
+
+  @javascript
+  Scenario: Keyboard users can tab past an unanswered question
+    Given I am on the "Quiz 1" "quiz activity" page logged in as student
+    When I press "Attempt quiz"
+    # Clicking the question text makes the next Tab start just before the options.
+    And I click on "Question One" "text"
+    And I press the tab key
+    Then the focused element is ".answer input" "css_element" in the "Question One" "question"
+    And I press the tab key
+    And the focused element is "Check" "button" in the "Question One" "question"
+
+  @javascript
+  Scenario: Clearing my choice moves the focus to the first answer option
+    Given I am on the "Quiz 1" "quiz activity" page logged in as student
+    When I press "Attempt quiz"
+    And I click on "Four" "qtype_multichoice > Answer" in the "Question One" "question"
+    And I click on "Clear my choice" "button" in the "Question One" "question"
+    Then I should not see "Clear my choice"
+    # The link we activated is now hidden from the screen-reader, so the focus must not be left on it.
+    And the focused element is ".answer input" "css_element" in the "Question One" "question"
