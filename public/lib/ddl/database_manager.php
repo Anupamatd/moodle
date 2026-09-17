@@ -973,6 +973,7 @@ class database_manager {
             'F' => XMLDB_TYPE_NUMBER, // Nobody should be using floats!
             'C' => XMLDB_TYPE_CHAR,
             'X' => XMLDB_TYPE_TEXT,
+            'J' => XMLDB_TYPE_JSON,
             'B' => XMLDB_TYPE_BINARY,
             'T' => XMLDB_TYPE_TIMESTAMP,
             'D' => XMLDB_TYPE_DATETIME,
@@ -1025,6 +1026,12 @@ class database_manager {
                         if ($type == XMLDB_TYPE_FLOAT) {
                             $type = XMLDB_TYPE_NUMBER;
                         }
+                        // Keep accepting NVARCHAR(MAX) JSON fields after a SQL Server upgrade.
+                        if ($type == XMLDB_TYPE_JSON && $dbtype == XMLDB_TYPE_TEXT &&
+                                $this->mdb->get_dbfamily() == 'mssql' && $dbfield->type === 'nvarchar' &&
+                                $dbfield->max_length == -1) {
+                            $dbtype = XMLDB_TYPE_JSON;
+                        }
                         if ($type != $dbtype) {
                             if ($expected = array_search($type, $typesmap)) {
                                 $errors[$tablename][] = "column '$fieldname' has incorrect type '$dbfield->meta_type', expected '$expected'";
@@ -1040,6 +1047,7 @@ class database_manager {
                                 }
                             }
                             switch ($dbtype) {
+                                case XMLDB_TYPE_JSON:
                                 case XMLDB_TYPE_TEXT:
                                 case XMLDB_TYPE_BINARY:
                                     // No length check necessary - there is one size only now.

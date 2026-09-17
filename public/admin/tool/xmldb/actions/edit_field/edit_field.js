@@ -120,6 +120,7 @@ function transformForm(event) {
             defaultField.disabled = true;
             defaultField.value = '';
             break;
+        case '9':  // XMLDB_TYPE_JSON
         case '7':  // XMLDB_TYPE_DATETIME
             lengthTip.innerHTML = '';
             lengthField.disabled = true;

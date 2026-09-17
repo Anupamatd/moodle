@@ -598,10 +598,12 @@ abstract class sql_generator {
                 $default = "'" . $this->default_for_char . "'";
             } else {
                 // If the DB requires to explicity define some clause to drop one default, do it here
-                // never applying defaults to TEXT and BINARY fields
+                // never applying defaults to TEXT, BINARY and JSON fields
                 if ($this->drop_default_value_required &&
                     $xmldb_field->getType() != XMLDB_TYPE_TEXT &&
-                    $xmldb_field->getType() != XMLDB_TYPE_BINARY && !$xmldb_field->getNotNull()) {
+                    $xmldb_field->getType() != XMLDB_TYPE_BINARY &&
+                    $xmldb_field->getType() != XMLDB_TYPE_JSON &&
+                    !$xmldb_field->getNotNull()) {
                     $default = $this->drop_default_value;
                 }
             }

@@ -4,6 +4,18 @@
 
 ### Added
 
+- XMLDB supports JSON documents with `XMLDB_TYPE_JSON` in upgrade scripts and `TYPE="json"` in `install.xml`.
+  Fields use PostgreSQL `jsonb`, MySQL/MariaDB `JSON`, or SQL Server's native `JSON` type when available.
+  Older SQL Server versions use `NVARCHAR(MAX)` and do not enforce JSON validity in the database.
+  Pass JSON-encoded strings to the DML methods and decode returned strings explicitly; SQL NULL remains PHP null.
+  For portability, store top-level JSON objects or arrays.
+  JSON fields do not support length, decimals, sequences, default values, or ordinary XMLDB indexes.
+  Whitespace and object key order may change during storage. JSON query syntax remains database-specific.
+  Existing text fields are not converted automatically; validate their contents before changing their type.
+  SQL Server does not support changing native JSON columns back to text with `change_field_type()`.
+
+  For more information see [MDL-89572](https://tracker.moodle.org/browse/MDL-89572)
+
 - Boost now has a dark colour mode, which a site turns on with the experimental theme_boost | enablecolourmodes setting, so a plugin's styles.css can no longer assume the page is light. Styles work in both modes if they take their colours from the Bootstrap custom properties (--bs-body-bg, --bs-body-color, --bs-secondary-bg, --bs-tertiary-bg, --bs-border-color, --bs-emphasis-color, --bs-link-color) or the design system tokens (--mds-bg-surface-*, --mds-text-*, --mds-border-*), all of which change with the mode. The equivalent utility classes (bg-body, bg-body-secondary, bg-body-tertiary, text-body, text-body-secondary, text-bg-*, border) do the same, and are safer than bg-white or text-dark. Where a colour genuinely has to differ between the modes, scope it with the [data-bs-theme="dark"] attribute selector, which is the Bootstrap standard rather than anything Boost-specific.
   Two things to watch for. A literal colour is a problem when it is only half of a pair: a fixed light background behind text that follows the mode, or fixed dark text on a surface that follows the mode, will lose its contrast. Where a colour carries meaning and has to stay, such as a status tint, fix the other half of the pair alongside it rather than letting it follow the mode. And an SVG rendered through an <img> tag paints with the fill baked into the file, so icons should go through the icon API in order to inherit currentColor.
 

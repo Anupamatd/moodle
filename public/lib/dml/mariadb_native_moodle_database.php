@@ -74,6 +74,58 @@ class mariadb_native_moodle_database extends mysqli_native_moodle_database {
         return 'mariadb';
     }
 
+    /**
+     * Recognise MariaDB's JSON alias, which is reported as LONGTEXT by the column metadata.
+     *
+     * @param string $table table name
+     * @return database_column_info[] column information indexed by name
+     */
+    protected function fetch_columns(string $table): array {
+        $columns = parent::fetch_columns($table);
+        if (!$columns || !array_filter($columns, fn($column) => $column->type === 'longtext')) {
+            return $columns;
+        }
+
+        // SHOW CREATE TABLE includes the JSON_VALID constraint, including for temporary tables.
+        $definition = $this->get_record_sql('SHOW CREATE TABLE ' . $this->fix_table_name($table));
+        $values = array_values((array) $definition);
+        $createsql = $values[1];
+        foreach ($columns as $name => $column) {
+            if ($column->type !== 'longtext' || !$this->has_json_constraint($createsql, $name)) {
+                continue;
+            }
+            $info = new stdClass();
+            foreach (['name', 'type', 'max_length', 'scale', 'not_null', 'primary_key', 'auto_increment',
+                    'binary', 'has_default', 'default_value', 'unique', 'meta_type'] as $property) {
+                $info->$property = $column->$property;
+            }
+            $info->type = 'json';
+            $info->meta_type = 'J';
+            $info->max_length = -1;
+            $columns[$name] = new database_column_info($info);
+        }
+        return $columns;
+    }
+
+    /**
+     * Check for a JSON_VALID constraint outside quoted text and SQL comments.
+     *
+     * @param string $createsql SQL returned by SHOW CREATE TABLE
+     * @param string $name unquoted column name
+     * @return bool whether the column has a JSON_VALID check constraint
+     */
+    protected function has_json_constraint(string $createsql, string $name): bool {
+        $quotedname = preg_quote('`' . str_replace('`', '``', $name) . '`', '~');
+        // Skip complete quoted tokens so COMMENT/default values and identifiers cannot impersonate a constraint.
+        // The constraint branch consumes its own quoted column name before scanning resumes.
+        $tokens = <<<'REGEX'
+'(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*"|`(?:[^`]|``)*`|/\*.*?\*/|\#[^\r\n]*|--\s[^\r\n]*
+REGEX;
+        $pattern = '~(?:' . $tokens . ')(*SKIP)(*FAIL)|\bCHECK\s*\(\s*json_valid\s*\(\s*' .
+            $quotedname . '\s*\)\s*\)~is';
+        return preg_match($pattern, $createsql) === 1;
+    }
+
     protected function has_breaking_change_quoted_defaults() {
         $version = $this->get_server_info()['version'];
         // Breaking change since 10.2.7: MDEV-13132.

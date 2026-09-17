@@ -135,7 +135,8 @@ class edit_field extends XMLDBAction {
                               XMLDB_TYPE_DATETIME=> $field->getXMLDBTypeName(XMLDB_TYPE_DATETIME),
                               XMLDB_TYPE_CHAR    => $field->getXMLDBTypeName(XMLDB_TYPE_CHAR),
                               XMLDB_TYPE_TEXT    => $field->getXMLDBTypeName(XMLDB_TYPE_TEXT),
-                              XMLDB_TYPE_BINARY  => $field->getXMLDBTypeName(XMLDB_TYPE_BINARY));
+                              XMLDB_TYPE_BINARY  => $field->getXMLDBTypeName(XMLDB_TYPE_BINARY),
+                              XMLDB_TYPE_JSON    => $field->getXMLDBTypeName(XMLDB_TYPE_JSON));
         // If current field isn't float, delete such column type to avoid its creation from the interface
         // Note that float fields are supported completely but it's possible than in a next future
         // we delete them completely from Moodle DB, using, exclusively, number(x,y) types

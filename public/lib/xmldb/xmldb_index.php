@@ -369,6 +369,10 @@ class xmldb_index extends xmldb_object {
                     $total += ($field->getLength() * 3); // the most complex utf-8 chars have 3 bytes
                     break;
 
+                case XMLDB_TYPE_JSON:
+                    return 'Invalid index definition in table {' . $xmldb_table->getName() . '}: JSON field "' .
+                        $field->getName() . '" cannot be indexed';
+
                 case XMLDB_TYPE_TEXT:
                     return 'Invalid index definition in table {'.$xmldb_table->getName(). '}: XMLDB_TYPE_TEXT field "'.$field->getName().'" can not be indexed';
                     break;

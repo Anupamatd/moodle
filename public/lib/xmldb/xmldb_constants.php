@@ -56,6 +56,8 @@ define ('XMLDB_TYPE_BINARY',      6);
 define ('XMLDB_TYPE_DATETIME',    7);
 /** Timestamp */
 define ('XMLDB_TYPE_TIMESTAMP',   8);
+/** JSON document */
+define('XMLDB_TYPE_JSON',         9);
 
 // ==== Now the allowed DB Keys ====
 /** Wrong DB Key */

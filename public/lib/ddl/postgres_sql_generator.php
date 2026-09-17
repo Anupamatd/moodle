@@ -185,6 +185,9 @@ class postgres_sql_generator extends sql_generator {
             case XMLDB_TYPE_TEXT:
                 $dbtype = 'TEXT';
                 break;
+            case XMLDB_TYPE_JSON:
+                $dbtype = 'JSONB';
+                break;
             case XMLDB_TYPE_BINARY:
                 $dbtype = 'BYTEA';
                 break;
@@ -278,6 +281,7 @@ class postgres_sql_generator extends sql_generator {
             ($xmldb_field->getType() == XMLDB_TYPE_FLOAT   && $oldmetatype == 'F') ||
             ($xmldb_field->getType() == XMLDB_TYPE_CHAR    && $oldmetatype == 'C') ||
             ($xmldb_field->getType() == XMLDB_TYPE_TEXT    && $oldmetatype == 'X') ||
+            ($xmldb_field->getType() == XMLDB_TYPE_JSON    && $oldmetatype == 'J') ||
             ($xmldb_field->getType() == XMLDB_TYPE_BINARY  && $oldmetatype == 'B')) {
             $typechanged = false;
         }
@@ -330,6 +334,9 @@ class postgres_sql_generator extends sql_generator {
             } else if (($oldmetatype == 'C' || $oldmetatype == 'X') &&
                 $xmldb_field->getType() == XMLDB_TYPE_INTEGER) {
                 $alterstmt .= ' USING CAST(CAST('.$fieldname.' AS NUMERIC) AS INTEGER)'; // From char to integer
+            }
+            if ($xmldb_field->getType() == XMLDB_TYPE_JSON) {
+                $alterstmt .= ' USING CAST(' . $fieldname . ' AS JSONB)';
             }
             $results[] = $alterstmt;
         }

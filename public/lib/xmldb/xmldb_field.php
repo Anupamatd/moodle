@@ -83,7 +83,7 @@ class xmldb_field extends xmldb_object {
     /**
      * Creates one new xmldb_field
      * @param string $name of field
-     * @param int $type XMLDB_TYPE_INTEGER, XMLDB_TYPE_NUMBER, XMLDB_TYPE_CHAR, XMLDB_TYPE_TEXT, XMLDB_TYPE_BINARY
+     * @param int $type XMLDB_TYPE_INTEGER, XMLDB_TYPE_NUMBER, XMLDB_TYPE_CHAR, XMLDB_TYPE_TEXT, XMLDB_TYPE_BINARY, XMLDB_TYPE_JSON
      * @param string $precision length for integers and chars, two-comma separated numbers for numbers
      * @param bool $unsigned XMLDB_UNSIGNED or null (or false)
      * @param bool $notnull XMLDB_NOTNULL or null (or false)
@@ -105,7 +105,7 @@ class xmldb_field extends xmldb_object {
     /**
      * Set all the attributes of one xmldb_field
      *
-     * @param int $type XMLDB_TYPE_INTEGER, XMLDB_TYPE_NUMBER, XMLDB_TYPE_CHAR, XMLDB_TYPE_TEXT, XMLDB_TYPE_BINARY
+     * @param int $type XMLDB_TYPE_INTEGER, XMLDB_TYPE_NUMBER, XMLDB_TYPE_CHAR, XMLDB_TYPE_TEXT, XMLDB_TYPE_BINARY, XMLDB_TYPE_JSON
      * @param string $precision length for integers and chars, two-comma separated numbers for numbers
      * @param bool $unsigned XMLDB_UNSIGNED or null (or false)
      * @param bool $notnull XMLDB_NOTNULL or null (or false)
@@ -116,8 +116,8 @@ class xmldb_field extends xmldb_object {
     public function set_attributes($type, $precision=null, $unsigned=null, $notnull=null, $sequence=null, $default=null, $previous=null) {
         $this->type = $type;
 
-        // LOBs (BINARY OR TEXT) don't support any precision (neither length or decimals).
-        if ($type == XMLDB_TYPE_BINARY || $this->type == XMLDB_TYPE_TEXT) {
+        // Binary, text and JSON fields do not support length or decimals.
+        if (in_array($type, [XMLDB_TYPE_BINARY, XMLDB_TYPE_TEXT, XMLDB_TYPE_JSON])) {
             $this->length = null;
             $this->decimals = null;
 
@@ -256,9 +256,9 @@ class xmldb_field extends xmldb_object {
             $this->debug($this->errormsg);
             $default = null;
         }
-        // Check, warn and autofix TEXT|BINARY columns having a default clause (only null is allowed)
-        if (($this->type == XMLDB_TYPE_TEXT || $this->type == XMLDB_TYPE_BINARY) && $default !== null) {
-            $this->errormsg = 'XMLDB has detected one TEXT/BINARY column (' . $this->name . ") with some DEFAULT defined. This type of columns cannot have any default value. Please fix it in source (XML and/or upgrade script) to avoid this message to be displayed.";
+        // Check, warn and autofix TEXT|BINARY|JSON columns having a default clause (only null is allowed)
+        if (in_array($this->type, [XMLDB_TYPE_TEXT, XMLDB_TYPE_BINARY, XMLDB_TYPE_JSON]) && $default !== null) {
+            $this->errormsg = 'XMLDB has detected one TEXT/BINARY/JSON column (' . $this->name . ") with some DEFAULT defined. This type of columns cannot have any default value. Please fix it in source (XML and/or upgrade script) to avoid this message to be displayed.";
             $this->debug($this->errormsg);
             $default = null;
         }
@@ -321,9 +321,10 @@ class xmldb_field extends xmldb_object {
                     $result = false;
                 }
             }
-            // Remove length from text and binary
+            // Remove length from text, binary and JSON
             if ($this->type == XMLDB_TYPE_TEXT ||
-                $this->type == XMLDB_TYPE_BINARY) {
+                $this->type == XMLDB_TYPE_BINARY ||
+                $this->type == XMLDB_TYPE_JSON) {
                 $length = null;
             }
             // Finally, set the length
@@ -426,6 +427,9 @@ class xmldb_field extends xmldb_object {
             case 'char':
                 $result = XMLDB_TYPE_CHAR;
                 break;
+            case 'json':
+                $result = XMLDB_TYPE_JSON;
+                break;
             case 'text':
                 $result = XMLDB_TYPE_TEXT;
                 break;
@@ -462,6 +466,9 @@ class xmldb_field extends xmldb_object {
                 break;
             case XMLDB_TYPE_CHAR:
                 $result = 'char';
+                break;
+            case XMLDB_TYPE_JSON:
+                $result = 'json';
                 break;
             case XMLDB_TYPE_TEXT:
                 $result = 'text';
@@ -563,6 +570,10 @@ class xmldb_field extends xmldb_object {
             case 'enum':
                 $this->type = XMLDB_TYPE_CHAR;
                 break;
+            case 'json':
+            case 'jsonb':
+                $this->type = XMLDB_TYPE_JSON;
+                break;
             case 'text':
             case 'tinytext':
             case 'mediumtext':
@@ -590,7 +601,7 @@ class xmldb_field extends xmldb_object {
                 $this->type == XMLDB_TYPE_CHAR)) {
             $this->length = $adofield->max_length;
         }
-        if ($this->type == XMLDB_TYPE_TEXT) {
+        if ($this->type == XMLDB_TYPE_TEXT || $this->type == XMLDB_TYPE_JSON) {
             $this->length = null;
         }
         if ($this->type == XMLDB_TYPE_BINARY) {
@@ -642,6 +653,9 @@ class xmldb_field extends xmldb_object {
                 break;
             case XMLDB_TYPE_CHAR:
                 $result .= 'XMLDB_TYPE_CHAR' . ', ';
+                break;
+            case XMLDB_TYPE_JSON:
+                $result .= 'XMLDB_TYPE_JSON' . ', ';
                 break;
             case XMLDB_TYPE_TEXT:
                 $result .= 'XMLDB_TYPE_TEXT' . ', ';
@@ -827,6 +841,14 @@ class xmldb_field extends xmldb_object {
                 if ($this->getLength() > self::CHAR_MAX_LENGTH) {
                     return 'Invalid field definition in table {'.$xmldb_table->getName(). '}: XMLDB_TYPE_CHAR field "'.$this->getName().'" is too long.'
                            .' Limit is '.self::CHAR_MAX_LENGTH.' chars.';
+                }
+                break;
+
+            case XMLDB_TYPE_JSON:
+                if ($this->getLength() !== null || $this->getDecimals() !== null ||
+                        $this->getSequence() || $this->getDefault() !== null) {
+                    return 'Invalid JSON field definition in table {' . $xmldb_table->getName() . '}: field "' .
+                        $this->getName() . '" cannot have length, decimals, sequence or a default';
                 }
                 break;
 
