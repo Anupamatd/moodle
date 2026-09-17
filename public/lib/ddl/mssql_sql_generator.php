@@ -234,6 +234,12 @@ class mssql_sql_generator extends sql_generator {
             case XMLDB_TYPE_TEXT:
                 $dbtype = 'NVARCHAR(MAX) COLLATE database_default';
                 break;
+            case XMLDB_TYPE_JSON:
+                // Check native JSON availability directly instead of relying on the server version.
+                $dbtype = $this->mdb->get_field_sql("SELECT TYPE_ID('json')")
+                    ? 'JSON'
+                    : 'NVARCHAR(MAX) COLLATE database_default';
+                break;
             case XMLDB_TYPE_BINARY:
                 $dbtype = 'VARBINARY(MAX)';
                 break;
@@ -363,6 +369,7 @@ class mssql_sql_generator extends sql_generator {
             ($xmldb_field->getType() == XMLDB_TYPE_FLOAT   && $oldmetatype == 'F') ||
             ($xmldb_field->getType() == XMLDB_TYPE_CHAR    && $oldmetatype == 'C') ||
             ($xmldb_field->getType() == XMLDB_TYPE_TEXT    && $oldmetatype == 'X') ||
+            ($xmldb_field->getType() == XMLDB_TYPE_JSON    && $oldmetatype == 'J') ||
             ($xmldb_field->getType() == XMLDB_TYPE_BINARY  && $oldmetatype == 'B')) {
             $typechanged = false;
         }

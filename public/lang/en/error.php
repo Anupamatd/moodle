@@ -371,6 +371,7 @@ $string['invalidgradeitemid'] = 'Incorrect grade item ID';
 $string['invalidgroupid'] = 'Incorrect group ID specified';
 $string['invalidipformat'] = 'Invalid IP address format';
 $string['invaliditemid'] = 'Incorrect item ID';
+$string['invalidjsonmigration'] = 'Cannot migrate {$a->table}.{$a->field} to JSON: record ID {$a->id} does not contain a valid JSON object or array (or contains SQL NULL for a required field). Correct the data and rerun the upgrade. No data has been changed by this validation.';
 $string['invalidkey'] = 'Incorrect key';
 $string['invalidlanguagecode'] = 'Invalid language code: {$a}';
 $string['invalidlegacy'] = 'Incorrect legacy role definition for type: {$a}';

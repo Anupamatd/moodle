@@ -139,6 +139,7 @@ class mysql_sql_generator extends sql_generator {
         if ($first instanceof xmldb_field) {
             foreach ($columns as $field) {
                 switch ($field->getType()) {
+                    case XMLDB_TYPE_JSON:
                     case XMLDB_TYPE_TEXT:
                         $size += 768;
                         break;
@@ -161,6 +162,7 @@ class mysql_sql_generator extends sql_generator {
         } else if ($first instanceof database_column_info) {
             foreach ($columns as $column) {
                 switch ($column->meta_type) {
+                    case 'J':
                     case 'X':
                         $size += 768;
                         break;
@@ -453,6 +455,9 @@ class mysql_sql_generator extends sql_generator {
                     }
                     $dbtype .= " COLLATE $collation";
                 }
+                break;
+            case XMLDB_TYPE_JSON:
+                $dbtype = 'JSON';
                 break;
             case XMLDB_TYPE_BINARY:
                 $dbtype = 'LONGBLOB';

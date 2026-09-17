@@ -27,6 +27,7 @@
       <xs:enumeration value="float" />
       <xs:enumeration value="char" />
       <xs:enumeration value="text" />
+      <xs:enumeration value="json" />
       <xs:enumeration value="binary" />
       <xs:enumeration value="datetime" />
     </xs:restriction>

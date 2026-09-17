@@ -711,9 +711,9 @@ class pgsql_native_moodle_database extends moodle_database {
                     $info->scale      = 2;
                 }
 
-            } else if ($rawcolumn->type === 'text') {
+            } else if (in_array($rawcolumn->type, ['text', 'json', 'jsonb'])) {
                 $info->type          = $rawcolumn->type;
-                $info->meta_type     = 'X';
+                $info->meta_type     = $rawcolumn->type === 'text' ? 'X' : 'J';
                 $info->max_length    = -1;
                 $info->scale         = null;
                 $info->not_null      = ($rawcolumn->attnotnull === 't');

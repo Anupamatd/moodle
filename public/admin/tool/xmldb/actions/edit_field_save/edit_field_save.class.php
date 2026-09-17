@@ -114,7 +114,11 @@ class edit_field_save extends XMLDBAction {
         if ($type != XMLDB_TYPE_NUMBER && $type != XMLDB_TYPE_FLOAT) {
             $decimals = NULL;
         }
-        if ($type == XMLDB_TYPE_BINARY) {
+        if ($type == XMLDB_TYPE_JSON) {
+            $length = null;
+            $sequence = false;
+        }
+        if ($type == XMLDB_TYPE_BINARY || $type == XMLDB_TYPE_JSON) {
             $default = NULL;
         }
         if ($default === '') {

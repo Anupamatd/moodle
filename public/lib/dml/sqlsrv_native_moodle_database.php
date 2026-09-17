@@ -613,7 +613,7 @@ class sqlsrv_native_moodle_database extends moodle_database {
             } else {
                 // Put correct length for character and LOB types
                 $info->max_length = $info->meta_type == 'C' ? $rawcolumn->char_max_length : $rawcolumn->max_length;
-                $info->max_length = ($info->meta_type == 'X' || $info->meta_type == 'B') ? -1 : $info->max_length;
+                $info->max_length = in_array($info->meta_type, ['X', 'B', 'J']) ? -1 : $info->max_length;
             }
 
             // Scale
@@ -718,6 +718,10 @@ class sqlsrv_native_moodle_database extends moodle_database {
           case 'NVARCHAR':
            $type = 'C';
            break;
+
+            case 'JSON':
+                $type = 'J';
+                break;
 
           case 'TEXT':
           case 'NTEXT':

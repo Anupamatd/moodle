@@ -129,13 +129,16 @@ class edit_field extends XMLDBAction {
                      <textarea name="comment" rows="3" cols="80" id="comment" class="form-control">' .
                      s($field->getComment()) . '</textarea></td></tr>';
         // xmldb_field Type
-        $typeoptions = array (XMLDB_TYPE_INTEGER => $field->getXMLDBTypeName(XMLDB_TYPE_INTEGER),
-                              XMLDB_TYPE_NUMBER  => $field->getXMLDBTypeName(XMLDB_TYPE_NUMBER),
-                              XMLDB_TYPE_FLOAT   => $field->getXMLDBTypeName(XMLDB_TYPE_FLOAT),
-                              XMLDB_TYPE_DATETIME=> $field->getXMLDBTypeName(XMLDB_TYPE_DATETIME),
-                              XMLDB_TYPE_CHAR    => $field->getXMLDBTypeName(XMLDB_TYPE_CHAR),
-                              XMLDB_TYPE_TEXT    => $field->getXMLDBTypeName(XMLDB_TYPE_TEXT),
-                              XMLDB_TYPE_BINARY  => $field->getXMLDBTypeName(XMLDB_TYPE_BINARY));
+        $typeoptions = [
+            XMLDB_TYPE_INTEGER => $field->getXMLDBTypeName(XMLDB_TYPE_INTEGER),
+            XMLDB_TYPE_NUMBER => $field->getXMLDBTypeName(XMLDB_TYPE_NUMBER),
+            XMLDB_TYPE_FLOAT => $field->getXMLDBTypeName(XMLDB_TYPE_FLOAT),
+            XMLDB_TYPE_DATETIME => $field->getXMLDBTypeName(XMLDB_TYPE_DATETIME),
+            XMLDB_TYPE_CHAR => $field->getXMLDBTypeName(XMLDB_TYPE_CHAR),
+            XMLDB_TYPE_TEXT => $field->getXMLDBTypeName(XMLDB_TYPE_TEXT),
+            XMLDB_TYPE_BINARY => $field->getXMLDBTypeName(XMLDB_TYPE_BINARY),
+            XMLDB_TYPE_JSON => $field->getXMLDBTypeName(XMLDB_TYPE_JSON),
+        ];
         // If current field isn't float, delete such column type to avoid its creation from the interface
         // Note that float fields are supported completely but it's possible than in a next future
         // we delete them completely from Moodle DB, using, exclusively, number(x,y) types

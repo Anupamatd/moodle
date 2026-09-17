@@ -2377,3 +2377,56 @@ function moodlenet_migrate_profile_field(): void {
                      )";
     $DB->execute($sql, ['fieldid' => $field->id, 'fieldid2' => $field->id]);
 }
+
+/**
+ * Validate existing data before migrating a text field to portable XMLDB JSON.
+ *
+ * This performs no writes. Call it before change_field_type(), while task writers are stopped.
+ * SQL NULL is accepted only for nullable target fields; JSON scalars are not portable.
+ *
+ * @param xmldb_table $table table containing the existing data
+ * @param xmldb_field $field target JSON field definition, including its nullability
+ * @param bool $allowempty allow empty strings for nullable fields when the caller will convert them to SQL NULL
+ * @throws moodle_exception if a value cannot be migrated
+ */
+function upgrade_validate_json_field(xmldb_table $table, xmldb_field $field, bool $allowempty = false): void {
+    global $DB;
+
+    $tablename = $table->getName();
+    $fieldname = $field->getName();
+    if (
+        $field->getType() !== XMLDB_TYPE_JSON ||
+        !preg_match('/^[a-z][a-z0-9_]*$/', $tablename) ||
+        !preg_match('/^[a-z][a-z0-9_]*$/', $fieldname)
+    ) {
+        throw new coding_exception('Expected a JSON field definition and valid XMLDB identifiers.');
+    }
+
+    $records = $DB->get_recordset($tablename, null, 'id', "id, $fieldname");
+    try {
+        foreach ($records as $record) {
+            $value = $record->$fieldname;
+            if (!$field->getNotNull() && ($value === null || ($allowempty && $value === ''))) {
+                continue;
+            }
+            if ($value !== null) {
+                try {
+                    $decoded = json_decode($value, false, 512, JSON_THROW_ON_ERROR);
+                } catch (JsonException $e) {
+                    // Treat decoding failures as invalid data and report the record below.
+                    $decoded = null;
+                }
+                if (is_object($decoded) || is_array($decoded)) {
+                    continue;
+                }
+            }
+            throw new moodle_exception('invalidjsonmigration', 'error', '', (object) [
+                'table' => $tablename,
+                'field' => $fieldname,
+                'id' => $record->id,
+            ]);
+        }
+    } finally {
+        $records->close();
+    }
+}

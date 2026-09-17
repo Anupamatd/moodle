@@ -132,5 +132,17 @@ function transformForm(event) {
             defaultField.disabled = true;
             defaultField.value = '';
             break;
+        case '9': // XMLDB_TYPE_JSON
+            lengthTip.innerHTML = '';
+            lengthField.disabled = true;
+            lengthField.value = '';
+            decimalsTip.innerHTML = '';
+            decimalsField.disabled = true;
+            decimalsField.value = '';
+            sequenceField.disabled = true;
+            sequenceField.value = '0';
+            defaultField.disabled = true;
+            defaultField.value = '';
+            break;
     }
 }

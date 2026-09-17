@@ -1,0 +1,28 @@
+issueNumber: MDL-89572
+notes:
+  core:
+    - message: >-
+        XMLDB supports JSON documents with `XMLDB_TYPE_JSON` in upgrade scripts and `TYPE="json"` in `install.xml`.
+        Fields use PostgreSQL `jsonb`, MySQL/MariaDB `JSON`, or SQL Server's native `JSON` type when available.
+        Older SQL Server versions use `NVARCHAR(MAX)` and do not enforce JSON validity in the database.
+        Pass JSON-encoded strings to the DML methods and decode returned strings explicitly; SQL NULL remains PHP null.
+        For portability, store top-level JSON objects or arrays.
+        JSON fields do not support length, decimals, sequences, default values, or ordinary XMLDB indexes.
+        Whitespace and object key order may change during storage. JSON query syntax remains database-specific.
+        Existing text fields are not converted automatically; validate their contents before changing their type.
+        SQL Server does not support changing native JSON columns back to text with `change_field_type()`.
+      type: added
+    - message: >-
+        Use `upgrade_validate_json_field($table, $field)` from `lib/db/upgradelib.php`
+        to validate existing data before calling `change_field_type()`.
+        Pass an `xmldb_table` and a target `xmldb_field` of type `XMLDB_TYPE_JSON`, including its intended nullability.
+        Validation accepts JSON objects and arrays, and SQL NULL for nullable fields.
+        The optional `allowempty` argument (default false) also accepts empty strings for nullable fields
+        whose migration explicitly converts them to SQL NULL.
+        The CLI validator exposes this as `--allowempty`; validation itself never changes data.
+        It stops at the first incompatible value and reports the table, field and record ID without modifying data or schema.
+        For a preliminary check, run `php admin/cli/validate_json_field.php --table=TABLE --field=FIELD`
+        using the table name without its database prefix; add `--notnull` for a required target field.
+        The command returns a non-zero exit status on failure.
+        Stop processes that write to the field and repeat validation during the upgrade before converting it.
+      type: added
