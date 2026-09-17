@@ -59,12 +59,13 @@ defined('MOODLE_INTERNAL') || die();
  * I - integers
  * N - numbers (floats)
  * C - characters and strings
+ * J - JSON documents
  * X - texts
  * B - binary blobs
  * L - boolean (1 bit)
  * T - timestamp - unsupported
  * D - date - unsupported
- * @property-read string $meta_type Standardised one character column type, uppercased and enumerated: R,I,N,C,X,B,L,T,D
+ * @property-read string $meta_type Standardised one character column type, uppercased and enumerated: R,I,N,C,X,B,L,T,D,J
  */
 class database_column_info {
 

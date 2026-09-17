@@ -1033,6 +1033,8 @@ class mysqli_native_moodle_database extends moodle_database {
             $info->scale         = $rawcolumn->numeric_scale;
             $info->unsigned      = (stripos($rawcolumn->column_type, 'unsigned') !== false);
 
+        } else if ($info->meta_type === 'J') {
+            $info->max_length = -1;
         } else if ($info->meta_type === 'X') {
             if ("$rawcolumn->character_maximum_length" === '4294967295') { // watch out for PHP max int limits!
                 // means maximum moodle size for text column, in other drivers it may also mean unknown size
@@ -1085,6 +1087,10 @@ class mysqli_native_moodle_database extends moodle_database {
             case 'SET':
             case 'VARCHAR':
                 $type = 'C';
+                break;
+
+            case 'JSON':
+                $type = 'J';
                 break;
 
             case 'TINYTEXT':

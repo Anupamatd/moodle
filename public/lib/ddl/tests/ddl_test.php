@@ -17,6 +17,7 @@
 namespace core;
 
 use database_column_info;
+use PHPUnit\Framework\Attributes\CoversClass;
 use moodle_database;
 use sql_generator;
 use xmldb_field;
@@ -28,11 +29,14 @@ use xmldb_table;
 /**
  * DDL layer tests.
  *
- * @package    core_ddl
+ * @package    core
  * @category   test
  * @copyright  2008 Nicolas Connault
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+#[CoversClass(\database_manager::class)]
+#[CoversClass(sql_generator::class)]
+#[CoversClass(moodle_database::class)]
 final class ddl_test extends \database_driver_testcase {
     /** @var xmldb_table[] keys are table name. Created in setUp. */
     private $tables = array();
@@ -159,6 +163,139 @@ final class ddl_test extends \database_driver_testcase {
         }
 
         return count($this->records[$tablename]);
+    }
+
+    /**
+     * JSON fields support DML, schema checks and schema changes on every database driver.
+     */
+    public function test_json_fields(): void {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('test_json_fields');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+        $table->add_field('document', XMLDB_TYPE_JSON);
+        $table->add_field('plain', XMLDB_TYPE_TEXT);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $dbman->create_table($table);
+        try {
+            $column = $DB->get_columns($table->getName())['document'];
+            $fallback = $DB->get_dbfamily() === 'mssql' && !$DB->get_field_sql("SELECT TYPE_ID('json')");
+            $this->assertSame($fallback ? 'X' : 'J', $column->meta_type);
+            $this->assertSame('X', $DB->get_columns($table->getName())['plain']->meta_type);
+            $schema = new xmldb_structure('json');
+            $schema->addTable($table);
+            $this->assertSame([], $dbman->check_database_schema($schema, ['extratables' => false]));
+
+            $value = ['name' => "Moodle's 日本語", 'nested' => ['enabled' => true, 'values' => [1, null, 'x']]];
+            $id = $DB->insert_record($table->getName(), (object) ['document' => json_encode($value)]);
+            $this->assertEquals($value, json_decode($DB->get_field($table->getName(), 'document', ['id' => $id]), true));
+            $DB->update_record($table->getName(), (object) ['id' => $id, 'document' => '[1, {"a": false}]']);
+            $this->assertEquals(
+                [1, ['a' => false]],
+                json_decode($DB->get_field($table->getName(), 'document', ['id' => $id]), true),
+            );
+            $DB->set_field($table->getName(), 'document', null, ['id' => $id]);
+            $this->assertNull($DB->get_field($table->getName(), 'document', ['id' => $id]));
+
+            $DB->set_field($table->getName(), 'document', '{}', ['id' => $id]);
+            $field = new xmldb_field('document', XMLDB_TYPE_JSON, null, null, XMLDB_NOTNULL);
+            $dbman->change_field_notnull($table, $field);
+            $this->assertTrue($DB->get_columns($table->getName())['document']->not_null);
+            $dbman->rename_field($table, $field, 'renamed');
+            $this->assertEquals((object) [], json_decode($DB->get_field($table->getName(), 'renamed', ['id' => $id])));
+            $dbman->drop_field($table, new xmldb_field('renamed', XMLDB_TYPE_JSON));
+            $dbman->add_field($table, new xmldb_field('added', XMLDB_TYPE_JSON));
+            $this->assertNull($DB->get_field($table->getName(), 'added', ['id' => $id]));
+
+            if (!$fallback) {
+                try {
+                    $DB->insert_record($table->getName(), (object) ['added' => '{invalid json']);
+                    $this->fail('The database must reject invalid JSON.');
+                } catch (\dml_write_exception $e) {
+                    $this->assertSame(1, $DB->count_records($table->getName()));
+                }
+            }
+        } finally {
+            $dbman->drop_table($table);
+        }
+    }
+
+    /**
+     * MariaDB recognises real JSON constraints in permanent and temporary tables, ignoring comments.
+     */
+    public function test_mariadb_json_metadata(): void {
+        $DB = $this->tdb;
+        if ($DB->get_dbvendor() !== 'mariadb') {
+            $this->markTestSkipped('MariaDB-specific JSON alias metadata.');
+        }
+        $dbman = $DB->get_manager();
+        foreach ([false, true] as $temporary) {
+            $table = new xmldb_table('test_table_json_metadata');
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+            $table->add_field('document', XMLDB_TYPE_JSON);
+            $table->add_field('plain', XMLDB_TYPE_TEXT);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            // phpcs:ignore moodle.Strings.ForbiddenStrings.Found -- Test literal MariaDB identifier quoting.
+            $table->setComment('CHECK (json_valid(`plain`))');
+            if ($temporary) {
+                $dbman->create_temp_table($table);
+            } else {
+                $dbman->create_table($table);
+            }
+            try {
+                $columns = $DB->get_columns($table->getName());
+                $this->assertSame('J', $columns['document']->meta_type);
+                $this->assertSame('X', $columns['plain']->meta_type);
+                $DB->change_database_structure(
+                    'ALTER TABLE ' . $dbman->generator->getTableName($table) . ' MODIFY plain LONGTEXT ' .
+                        // phpcs:ignore moodle.Strings.ForbiddenStrings.Found -- Test quoted SQL inside a comment.
+                        "COMMENT 'It''s CHECK (json_valid(`plain`))'",
+                    [$table->getName()],
+                );
+                $columns = $DB->get_columns($table->getName());
+                $this->assertSame('J', $columns['document']->meta_type);
+                $this->assertSame('X', $columns['plain']->meta_type);
+                $id = $DB->insert_record($table->getName(), (object) [
+                    'document' => '{"enabled":true}', 'plain' => 'Not JSON',
+                ]);
+                $this->assertSame(
+                    ['enabled' => true],
+                    json_decode($DB->get_field($table->getName(), 'document', ['id' => $id]), true),
+                );
+            } finally {
+                $dbman->drop_table($table);
+            }
+        }
+    }
+
+    /**
+     * Existing valid text documents can be migrated explicitly to JSON.
+     */
+    public function test_change_text_to_json(): void {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('test_json_conversion');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+        $table->add_field('document', XMLDB_TYPE_TEXT);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $dbman->create_table($table);
+        try {
+            $id = $DB->insert_record($table->getName(), (object) ['document' => '{"enabled":true}']);
+            $nullid = $DB->insert_record($table->getName(), (object) ['document' => null]);
+            $field = new xmldb_field('document', XMLDB_TYPE_JSON);
+            $dbman->change_field_type($table, $field);
+            $this->assertEquals(
+                ['enabled' => true],
+                json_decode($DB->get_field($table->getName(), 'document', ['id' => $id]), true),
+            );
+            $this->assertNull($DB->get_field($table->getName(), 'document', ['id' => $nullid]));
+            $table->getField('document')->setType(XMLDB_TYPE_JSON);
+            $schema = new xmldb_structure('json');
+            $schema->addTable($table);
+            $this->assertSame([], $dbman->check_database_schema($schema, ['extratables' => false]));
+        } finally {
+            $dbman->drop_table($table);
+        }
     }
 
     /**

@@ -597,11 +597,16 @@ abstract class sql_generator {
                 $xmldb_field->getNotNull()) {
                 $default = "'" . $this->default_for_char . "'";
             } else {
-                // If the DB requires to explicity define some clause to drop one default, do it here
-                // never applying defaults to TEXT and BINARY fields
-                if ($this->drop_default_value_required &&
+                // Generate an explicit clause to drop a default when required, except for TEXT, BINARY and JSON.
+                // phpcs:disable moodle.NamingConventions.ValidVariableName.VariableNameUnderscore
+                if (
+                    $this->drop_default_value_required &&
                     $xmldb_field->getType() != XMLDB_TYPE_TEXT &&
-                    $xmldb_field->getType() != XMLDB_TYPE_BINARY && !$xmldb_field->getNotNull()) {
+                    $xmldb_field->getType() != XMLDB_TYPE_BINARY &&
+                    $xmldb_field->getType() != XMLDB_TYPE_JSON &&
+                    !$xmldb_field->getNotNull()
+                ) {
+                    // phpcs:enable moodle.NamingConventions.ValidVariableName.VariableNameUnderscore
                     $default = $this->drop_default_value;
                 }
             }
