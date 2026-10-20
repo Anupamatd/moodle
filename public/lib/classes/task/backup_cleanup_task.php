@@ -66,7 +66,7 @@ class backup_cleanup_task extends scheduled_task {
         foreach ($records as $record) {
             // Check if there is no incomplete adhoc task relying on the given backupid.
             $params = array('%' . $record->backupid . '%');
-            $select = $DB->sql_like('customdata', '?', false);
+            $select = $DB->sql_like($DB->sql_cast_to_char('customdata'), '?', false);
             $count = $DB->count_records_select('task_adhoc',  $select, $params);
             if ($count === 0) {
                 // Looks like there is no adhoc task, so we can delete logs and controllers for this backupid.

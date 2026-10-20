@@ -953,17 +953,17 @@ final class adhoc_task_test extends \advanced_testcase {
         // Create adhoc tasks.
         $task1 = new adhoc_test_task();
         $task1->set_next_run_time(1510000000);
-        $task1->set_custom_data('Task 1');
+        $task1->set_custom_data(['name' => 'Task 1']);
         manager::queue_adhoc_task($task1);
 
         $task2 = new adhoc_test_task();
         $task2->set_next_run_time(1520000000);
-        $task2->set_custom_data('Task 2');
+        $task2->set_custom_data(['name' => 'Task 2']);
         manager::queue_adhoc_task($task2);
 
         $task3 = new adhoc_test_task();
         $task3->set_next_run_time(1520000000);
-        $task3->set_custom_data('Task 3');
+        $task3->set_custom_data(['name' => 'Task 3']);
         manager::queue_adhoc_task($task3);
 
         // Shuffle tasks.
@@ -978,15 +978,15 @@ final class adhoc_task_test extends \advanced_testcase {
 
         // Confirm, that tasks are sorted by nextruntime and then by id (ascending).
         $task = manager::get_next_adhoc_task($clock->time());
-        $this->assertEquals('Task 2', $task->get_custom_data());
+        $this->assertEquals('Task 2', $task->get_custom_data()->name);
         manager::adhoc_task_complete($task);
 
         $task = manager::get_next_adhoc_task($clock->time());
-        $this->assertEquals('Task 3', $task->get_custom_data());
+        $this->assertEquals('Task 3', $task->get_custom_data()->name);
         manager::adhoc_task_complete($task);
 
         $task = manager::get_next_adhoc_task($clock->time());
-        $this->assertEquals('Task 1', $task->get_custom_data());
+        $this->assertEquals('Task 1', $task->get_custom_data()->name);
         manager::adhoc_task_complete($task);
     }
 
@@ -1640,5 +1640,94 @@ final class adhoc_task_test extends \advanced_testcase {
         $this->expectExceptionMessageMatches('/Invalid JSON in adhoc task customdata/');
 
         \core\task\manager::build_task_identity_hash($task);
+    }
+
+    /**
+     * JSON formatting and object key order do not affect queued task matching.
+     */
+    public function test_customdata_matching_ignores_json_formatting(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $task = new adhoc_test_task();
+        $task->set_component('core');
+        $task->set_custom_data_as_string('{"b":2,"a":{"y":true,"x":1}}');
+        $id = manager::queue_adhoc_task($task);
+
+        // Simulate the different representation returned by native JSON storage.
+        $DB->set_field('task_adhoc', 'customdata', '{"a": {"x": 1, "y": true}, "b": 2}', ['id' => $id]);
+        $DB->set_field('task_adhoc', 'identityhash', null, ['id' => $id]);
+        $match = manager::get_queued_adhoc_task_record($task);
+        $this->assertNotFalse($match);
+        $this->assertEquals($id, $match->id);
+        $this->assertEquals($id, manager::queue_adhoc_task($task, true));
+        $this->assertSame(1, $DB->count_records('task_adhoc'));
+
+        $task->set_custom_data(['different' => true]);
+        $this->assertFalse(manager::get_queued_adhoc_task_record($task));
+    }
+
+    /**
+     * Task APIs store objects and arrays directly and use SQL NULL for absent values.
+     */
+    public function test_direct_customdata_round_trip(): void {
+        global $DB;
+        $this->resetAfterTest();
+        foreach (['{}', '[]', '{"id":42,"reset_events":1}', '{"data":{"a":1}}', '[1,null,false]', ''] as $json) {
+            $task = new adhoc_test_task();
+            $task->set_component('core');
+            $task->set_custom_data_as_string($json);
+            $id = manager::queue_adhoc_task($task);
+            $record = $DB->get_record('task_adhoc', ['id' => $id], '*', MUST_EXIST);
+            $loaded = manager::adhoc_task_from_record($record);
+            $this->assertEquals($task->get_custom_data(), $loaded->get_custom_data());
+            if ($json === '') {
+                $this->assertNull($record->customdata);
+                $this->assertSame('', $loaded->get_custom_data_as_string());
+            } else {
+                $this->assertEquals(json_decode($json), json_decode($record->customdata));
+            }
+            $this->assertSame(manager::build_task_identity_hash($task), manager::build_task_identity_hash($loaded));
+        }
+    }
+
+    /**
+     * Queueing without duplicate detection also rejects malformed task payloads before insertion.
+     */
+    public function test_queue_rejects_invalid_json(): void {
+        global $DB;
+        $this->resetAfterTest();
+        foreach (['{invalid json', '1,"other":2', '1,"data":2'] as $json) {
+            $task = new adhoc_test_task();
+            $task->set_component('core');
+            $task->set_custom_data_as_string($json);
+            try {
+                manager::queue_adhoc_task($task);
+                $this->fail('Invalid customdata must not be queued.');
+            } catch (\coding_exception $e) {
+                $this->assertStringContainsString('Invalid JSON in adhoc task customdata', $e->getMessage());
+            }
+        }
+        $this->assertSame(0, $DB->count_records('task_adhoc'));
+    }
+
+    /**
+     * Scalar JSON must be rejected on every driver, including the SQL Server text fallback.
+     */
+    public function test_queue_rejects_scalar_json(): void {
+        global $DB;
+        $this->resetAfterTest();
+        foreach (['"Task 1"', '42', 'false', 'null'] as $json) {
+            foreach ([false, true] as $checkforexisting) {
+                $task = new adhoc_test_task();
+                $task->set_custom_data_as_string($json);
+                try {
+                    manager::queue_adhoc_task($task, $checkforexisting);
+                    $this->fail('Scalar customdata must not be queued.');
+                } catch (\coding_exception $e) {
+                    $this->assertStringContainsString('customdata must be a JSON object or array', $e->getMessage());
+                }
+            }
+        }
+        $this->assertSame(0, $DB->count_records('task_adhoc'));
     }
 }

@@ -2430,3 +2430,47 @@ function upgrade_validate_json_field(xmldb_table $table, xmldb_field $field, boo
         $records->close();
     }
 }
+
+/**
+ * Migrate adhoc task customdata to JSON objects and arrays without changing their structure.
+ *
+ * Empty strings mean absent task data and become SQL NULL. Scalars and invalid JSON stop the
+ * migration before any data is changed. Stop task writers for the duration of this upgrade.
+ *
+ * @param xmldb_table|null $table task table; defaults to task_adhoc
+ */
+function upgrade_task_adhoc_customdata(?xmldb_table $table = null): void {
+    global $DB;
+
+    $table = $table ?? new xmldb_table('task_adhoc');
+    $tablename = $table->getName();
+    $field = new xmldb_field('customdata', XMLDB_TYPE_JSON);
+    upgrade_validate_json_field($table, $field, allowempty: true);
+
+    // Inspect bounded batches: SQL text comparisons are not portable once the column is JSON.
+    // Retrying after an interrupted upgrade is safe because only empty strings are normalised.
+    $lastid = 0;
+    while (
+        $records = $DB->get_records_select(
+            $tablename,
+            'id > :lastid',
+            ['lastid' => $lastid],
+            'id',
+            'id, customdata',
+            0,
+            500,
+        )
+    ) {
+        if (!PHPUNIT_TEST) {
+            upgrade_set_timeout(300);
+        }
+        foreach ($records as $record) {
+            $lastid = $record->id;
+            if ($record->customdata === '') {
+                $DB->set_field($tablename, 'customdata', null, ['id' => $record->id]);
+            }
+        }
+    }
+
+    $DB->get_manager()->change_field_type($table, $field);
+}

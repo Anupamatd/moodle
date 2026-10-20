@@ -2381,5 +2381,11 @@ function xmldb_main_upgrade($oldversion) {
     // Automatically generated Moodle v5.3.0 release upgrade line.
     // Put any upgrade step following this.
 
+    if ($oldversion < 2026100500.03) {
+        // Validate existing documents and normalise absent data before converting task customdata to JSON.
+        upgrade_task_adhoc_customdata();
+        upgrade_main_savepoint(true, 2026100500.03);
+    }
+
     return true;
 }

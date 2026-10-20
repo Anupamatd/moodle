@@ -1,0 +1,17 @@
+issueNumber: MDL-89572
+notes:
+  core:
+    - message: >-
+        The `task_adhoc.customdata` column now uses XMLDB JSON storage.
+        Task payloads are stored directly as JSON objects or arrays, without a wrapper or additional format column.
+        Empty legacy strings are converted to SQL NULL; existing SQL NULL values remain NULL.
+        The upgrade validates all rows before modifying data and stops on malformed JSON or scalar JSON values,
+        including strings, numbers, booleans and JSON null, reporting the table, field and record ID.
+        Sites with scalar task payloads must resolve them according to the owning task's expected data structure before upgrading.
+        New task payloads must also be objects or arrays: scalar customdata is rejected when converted to a task database record.
+        Leaving customdata unset, or setting its JSON string to an empty string, represents absent data and stores SQL NULL.
+        This is a compatibility change for plugins that previously queued scalar customdata.
+        Update both producers and consumers of such tasks; do not discard or automatically wrap existing data.
+        JSON whitespace and object key order may change during storage; task duplicate detection compares normalised values.
+        Stop cron and other task writers during the upgrade, and rerun after correcting any incompatible data.
+      type: changed

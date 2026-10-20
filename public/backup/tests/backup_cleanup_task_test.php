@@ -28,6 +28,7 @@ require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
  * @copyright  2021 Mikhail Golenkov <mikhailgolenkov@catalyst-au.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+#[\PHPUnit\Framework\Attributes\CoversClass(\core\task\backup_cleanup_task::class)]
 final class backup_cleanup_task_test extends \advanced_testcase {
 
     /**
@@ -111,6 +112,26 @@ final class backup_cleanup_task_test extends \advanced_testcase {
         // Records related to the second backup should remain.
         $this->assertGreaterThan(0, $DB->count_records('backup_controllers', ['backupid' => $backupid2]));
         $this->assertGreaterThanOrEqual(0, $DB->count_records('backup_logs', ['backupid' => $backupid2]));
+    }
+
+    /**
+     * Backup identifiers inside native task JSON still prevent premature cleanup.
+     */
+    public function test_cleanup_preserves_backup_referenced_by_json_task(): void {
+        global $DB;
+        $course = $this->getDataGenerator()->create_course();
+        $backupid = $this->backup_course($course->id);
+        $DB->set_field('backup_controllers', 'timecreated', time() - 31 * DAYSECS, ['backupid' => $backupid]);
+        $pending = new \core\task\asynchronous_backup_task();
+        $pending->set_custom_data(['backupid' => $backupid]);
+        $taskid = \core\task\manager::queue_adhoc_task($pending);
+
+        $cleanup = new \core\task\backup_cleanup_task();
+        $cleanup->execute();
+        $this->assertTrue($DB->record_exists('backup_controllers', ['backupid' => $backupid]));
+        $DB->delete_records('task_adhoc', ['id' => $taskid]);
+        $cleanup->execute();
+        $this->assertFalse($DB->record_exists('backup_controllers', ['backupid' => $backupid]));
     }
 
     /**

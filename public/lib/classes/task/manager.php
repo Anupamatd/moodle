@@ -234,9 +234,8 @@ class manager {
         global $DB;
 
         $record = self::record_from_adhoc_task($task);
-        $params = [$record->classname, $record->component, $record->customdata];
-        $sql = 'classname = ? AND component = ? AND ' .
-            $DB->sql_compare_text('customdata', \core_text::strlen($record->customdata) + 1) . ' = ?';
+        $params = [$record->classname, $record->component];
+        $sql = 'classname = ? AND component = ?';
 
         if ($record->userid) {
             $params[] = $record->userid;
@@ -247,8 +246,18 @@ class manager {
             $sql .= " AND (attemptsavailable > 0 OR attemptsavailable IS NULL)";
         }
 
-        $queuedtasks = $DB->get_records_select('task_adhoc', $sql, $params, 'timecreated DESC, id DESC', '*', 0, 1);
-        return reset($queuedtasks);
+        $customdata = self::canonicalise_json_string($task->get_custom_data_as_string());
+        $queuedtasks = $DB->get_recordset_select('task_adhoc', $sql, $params, 'timecreated DESC, id DESC');
+        try {
+            foreach ($queuedtasks as $queuedtask) {
+                if (self::canonicalise_json_string($queuedtask->customdata) === $customdata) {
+                    return $queuedtask;
+                }
+            }
+        } finally {
+            $queuedtasks->close();
+        }
+        return false;
     }
 
     /**
@@ -346,9 +355,8 @@ class manager {
             }
 
             // Fall back to getting all matching tasks (including duplicates).
-            $params = [$record->classname, $record->component, $record->customdata];
-            $sql = 'classname = ? AND component = ? AND ' .
-                $DB->sql_compare_text('customdata', \core_text::strlen($record->customdata) + 1) . ' = ?';
+            $params = [$record->classname, $record->component];
+            $sql = 'classname = ? AND component = ?';
 
             if ($record->userid) {
                 $params[] = $record->userid;
@@ -358,7 +366,19 @@ class manager {
             }
             $sql .= " AND timestarted IS NULL";
 
-            $existingtasks = $DB->get_records_select('task_adhoc', $sql, $params, 'id ASC');
+            // Native JSON storage can change whitespace and object key order.
+            $customdata = self::canonicalise_json_string($task->get_custom_data_as_string());
+            $existingtasks = [];
+            $candidates = $DB->get_recordset_select('task_adhoc', $sql, $params, 'id ASC');
+            try {
+                foreach ($candidates as $candidate) {
+                    if (self::canonicalise_json_string($candidate->customdata) === $customdata) {
+                        $existingtasks[$candidate->id] = $candidate;
+                    }
+                }
+            } finally {
+                $candidates->close();
+            }
 
             $legacytasks = array_filter(
                 $existingtasks,
@@ -503,6 +523,7 @@ class manager {
      * @param bool $needsidentityhash Whether to include the identity hash in the record
      *
      * @return \stdClass The record object representing the adhoc task
+     * @throws \coding_exception if customdata is malformed JSON or a scalar value
      */
     public static function record_from_adhoc_task(adhoc_task $task, bool $needsidentityhash = false): \stdClass {
         $record = new \stdClass();
@@ -512,6 +533,20 @@ class manager {
         $record->nextruntime = $task->get_next_run_time();
         $record->faildelay = $task->get_fail_delay();
         $record->customdata = $task->get_custom_data_as_string();
+        if ($record->customdata === '' || $record->customdata === null) {
+            $record->customdata = null;
+        } else {
+            try {
+                $decoded = json_decode($record->customdata, flags: JSON_THROW_ON_ERROR);
+            } catch (\JsonException $e) {
+                throw new \coding_exception('Invalid JSON in adhoc task customdata.');
+            }
+            if (!is_object($decoded) && !is_array($decoded)) {
+                throw new \coding_exception(
+                    'Adhoc task customdata must be a JSON object or array; scalar values are not supported.',
+                );
+            }
+        }
         $record->userid = $task->get_userid();
         $record->timestarted = $task->get_timestarted();
         $record->hostname = $task->get_hostname();

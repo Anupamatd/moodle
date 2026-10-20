@@ -86,15 +86,18 @@ abstract class adhoc_task extends task_base {
 
     /**
      * Setter for $customdata.
-     * @param mixed $customdata (anything that can be handled by json_encode)
+     * Customdata must encode to a JSON object or array when the task is queued.
+     *
+     * @param object|array $customdata task data
      */
     public function set_custom_data($customdata) {
         $this->customdata = json_encode($customdata);
     }
 
     /**
-     * Alternate setter for $customdata. Expects the data as a json_encoded string.
-     * @param string $customdata json_encoded string
+     * Alternate setter for $customdata. Expects a JSON object or array, or an empty string for absent data.
+     *
+     * @param string $customdata JSON-encoded task data
      */
     public function set_custom_data_as_string($customdata) {
         $this->customdata = $customdata;
