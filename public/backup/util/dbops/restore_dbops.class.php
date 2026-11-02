@@ -1917,23 +1917,38 @@ abstract class restore_dbops {
      * @param string $fullname
      * @param string $shortname
      * @param int $categoryid
+     * @param \core\lock\lock|null $lock An already-acquired shortname lock held by the caller.
+     *        If null, the function acquires its own lock.
      * @return int The new course id
      */
-    public static function create_new_course($fullname, $shortname, $categoryid) {
-        global $DB;
+    public static function create_new_course($fullname, $shortname, $categoryid, ?\core\lock\lock $lock = null) {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+
         $category = $DB->get_record('course_categories', array('id'=>$categoryid), '*', MUST_EXIST);
 
-        $course = new stdClass;
-        $course->fullname = $fullname;
-        $course->shortname = $shortname;
-        $course->category = $category->id;
-        $course->sortorder = 0;
-        $course->timecreated  = time();
-        $course->timemodified = $course->timecreated;
-        // forcing skeleton courses to be hidden instead of going by $category->visible , until MDL-27790 is resolved.
-        $course->visible = 0;
+        // Acquire a lock if one was not provided by the caller.
+        if (!$lock) {
+            $lock = course_acquire_shortname_lock($shortname);
+        }
 
-        $courseid = $DB->insert_record('course', $course);
+        try {
+            course_ensure_shortname_available($shortname);
+
+            $course = new stdClass();
+            $course->fullname = $fullname;
+            $course->shortname = $shortname;
+            $course->category = $category->id;
+            $course->sortorder = 0;
+            $course->timecreated  = time();
+            $course->timemodified = $course->timecreated;
+            // Forcing skeleton courses to be hidden instead of going by $category->visible, until MDL-27790 is resolved.
+            $course->visible = 0;
+
+            $courseid = $DB->insert_record('course', $course);
+        } finally {
+            $lock->release();
+        }
 
         $category->coursecount++;
         $DB->update_record('course_categories', $category);
