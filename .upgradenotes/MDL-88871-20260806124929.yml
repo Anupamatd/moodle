@@ -1,0 +1,20 @@
+issueNumber: MDL-88871
+notes:
+  core_course:
+    - message: >-
+        Course shortnames are now treated as unique. During upgrade, existing
+        duplicate shortnames are automatically resolved by appending numeric
+        suffixes (`_1`, `_2`, etc.), keeping the most recently accessed course
+        unchanged.
+
+
+        Before upgrading, administrators should review duplicate shortnames and
+        resolve them proactively. Use `php admin/cli/fix_course_shortnames.php`
+        to list duplicates, or
+        `php admin/cli/fix_course_shortnames.php --fix` to apply the same
+        automatic resolution.
+
+
+        Any custom code or integrations that assume non-unique course shortnames
+        must be updated.
+      type: changed
