@@ -116,7 +116,7 @@
       <INDEXES>
         <INDEX NAME="category" UNIQUE="false" FIELDS="category"/>
         <INDEX NAME="idnumber" UNIQUE="false" FIELDS="idnumber"/>
-        <INDEX NAME="shortname" UNIQUE="false" FIELDS="shortname"/>
+        <INDEX NAME="shortname" UNIQUE="true" FIELDS="shortname"/>
         <INDEX NAME="sortorder" UNIQUE="false" FIELDS="sortorder"/>
       </INDEXES>
     </TABLE>
